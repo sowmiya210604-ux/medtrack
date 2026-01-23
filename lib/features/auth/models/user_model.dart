@@ -1,0 +1,77 @@
+class User {
+  final String id;
+  final String name;
+  final String email;
+  final String phone;
+  final String? profileImage;
+  final DateTime? dateOfBirth;
+  final String? gender;
+  final String? bloodGroup;
+  final String? address;
+
+  User({
+    required this.id,
+    required this.name,
+    required this.email,
+    required this.phone,
+    this.profileImage,
+    this.dateOfBirth,
+    this.gender,
+    this.bloodGroup,
+    this.address,
+  });
+
+  factory User.fromJson(Map<String, dynamic> json) {
+    return User(
+      id: json['id'],
+      name: json['name'],
+      email: json['email'],
+      phone: json['phone'],
+      profileImage: json['profileImage'],
+      dateOfBirth: json['dateOfBirth'] != null
+          ? DateTime.parse(json['dateOfBirth'])
+          : null,
+      gender: json['gender'],
+      bloodGroup: json['bloodGroup'],
+      address: json['address'],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'email': email,
+      'phone': phone,
+      'profileImage': profileImage,
+      'dateOfBirth': dateOfBirth?.toIso8601String(),
+      'gender': gender,
+      'bloodGroup': bloodGroup,
+      'address': address,
+    };
+  }
+
+  User copyWith({
+    String? id,
+    String? name,
+    String? email,
+    String? phone,
+    String? profileImage,
+    DateTime? dateOfBirth,
+    String? gender,
+    String? bloodGroup,
+    String? address,
+  }) {
+    return User(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      email: email ?? this.email,
+      phone: phone ?? this.phone,
+      profileImage: profileImage ?? this.profileImage,
+      dateOfBirth: dateOfBirth ?? this.dateOfBirth,
+      gender: gender ?? this.gender,
+      bloodGroup: bloodGroup ?? this.bloodGroup,
+      address: address ?? this.address,
+    );
+  }
+}
