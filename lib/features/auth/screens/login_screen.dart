@@ -159,6 +159,18 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 16),
+                // Test Connection Button (Debug)
+                TextButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).pushNamed('/test-connection');
+                  },
+                  icon: const Icon(Icons.wifi_find, size: 18),
+                  label: const Text('Test Backend Connection'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.grey,
+                  ),
+                ),
               ],
             ),
           ),

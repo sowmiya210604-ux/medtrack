@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/filter_widget.dart';
+import '../../../core/widgets/animated_card.dart';
+import '../../../core/widgets/empty_state_widget.dart';
 import '../providers/report_provider.dart';
 import '../models/report_model.dart';
 import 'upload_report_screen.dart';
@@ -16,12 +19,33 @@ class ReportsScreen extends StatefulWidget {
 
 class _ReportsScreenState extends State<ReportsScreen> {
   String _selectedCategory = 'All';
+  DateTime? _startDate;
+  DateTime? _endDate;
+  String? _selectedType;
+  String? _selectedStatus;
+
   final List<String> _categories = [
     'All',
     'Blood Tests',
     'Hormones',
     'Organ Function',
     'Vitamins',
+  ];
+
+  final List<String> _reportTypes = [
+    'All',
+    'Complete Blood Count',
+    'Lipid Profile',
+    'Blood Glucose',
+    'Thyroid Panel',
+    'Liver Function',
+  ];
+
+  final List<String> _statusOptions = [
+    'All',
+    'Normal',
+    'Abnormal',
+    'Critical',
   ];
 
   @override
@@ -32,10 +56,25 @@ class _ReportsScreenState extends State<ReportsScreen> {
         title: const Text('Medical Reports'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.filter_list),
-            onPressed: () {
-              _showFilterDialog();
-            },
+            icon: Stack(
+              children: [
+                const Icon(Icons.filter_list),
+                if (_hasActiveFilters())
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: AppColors.error,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            onPressed: _showFilterBottomSheet,
           ),
         ],
       ),
@@ -57,11 +96,45 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 final reports = reportProvider.reports;
 
                 if (reports.isEmpty) {
-                  return _buildEmptyState();
+                  return EmptyStateWidget(
+                    icon: Icons.folder_open,
+                    title: 'No Reports Yet',
+                    message: 'Upload your first medical report to get started',
+                    actionText: 'Upload Report',
+                    onAction: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const UploadReportScreen(),
+                        ),
+                      );
+                    },
+                  );
+                }
+
+                // Apply filters
+                final filteredReports = _applyFilters(reports);
+
+                if (filteredReports.isEmpty) {
+                  return EmptyStateWidget(
+                    icon: Icons.filter_list_off,
+                    title: 'No Matching Reports',
+                    message: 'Try adjusting your filters to see more results',
+                    actionText: 'Clear Filters',
+                    onAction: () {
+                      setState(() {
+                        _startDate = null;
+                        _endDate = null;
+                        _selectedType = null;
+                        _selectedStatus = null;
+                        _selectedCategory = 'All';
+                      });
+                    },
+                  );
                 }
 
                 // Group reports by month
-                final groupedReports = _groupReportsByMonth(reports);
+                final groupedReports = _groupReportsByMonth(filteredReports);
 
                 return ListView.builder(
                   padding: const EdgeInsets.all(16),
@@ -169,7 +242,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Widget _buildReportCard(MedicalReport report) {
-    return InkWell(
+    return AnimatedCard(
       onTap: () {
         Navigator.push(
           context,
@@ -178,7 +251,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
         );
       },
-      borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -258,96 +330,84 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(30),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.folder_open,
-                size: 80,
-                color: AppColors.primary,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'No Reports Yet',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Upload your first medical report to get started',
-              style: Theme.of(context).textTheme.bodyMedium,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const UploadReportScreen(),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.upload_file),
-              label: const Text('Upload Report'),
-            ),
-          ],
-        ),
+  void _showFilterBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => FilterWidget(
+        startDate: _startDate,
+        endDate: _endDate,
+        selectedType: _selectedType,
+        selectedStatus: _selectedStatus,
+        availableTypes: _reportTypes,
+        availableStatuses: _statusOptions,
+        onDateRangeChanged: (start, end) {
+          setState(() {
+            _startDate = start;
+            _endDate = end;
+          });
+        },
+        onTypeChanged: (type) {
+          setState(() {
+            _selectedType = type;
+          });
+        },
+        onStatusChanged: (status) {
+          setState(() {
+            _selectedStatus = status;
+          });
+        },
+        onReset: () {
+          setState(() {
+            _startDate = null;
+            _endDate = null;
+            _selectedType = null;
+            _selectedStatus = null;
+          });
+        },
       ),
     );
   }
 
-  void _showFilterDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Filter Reports'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: const Text('Date Range'),
-              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-              onTap: () {
-                // TODO: Implement date range filter
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              title: const Text('Test Type'),
-              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-              onTap: () {
-                // TODO: Implement test type filter
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              title: const Text('Lab Name'),
-              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-              onTap: () {
-                // TODO: Implement lab name filter
-                Navigator.pop(context);
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
+  bool _hasActiveFilters() {
+    return _startDate != null ||
+        _endDate != null ||
+        (_selectedType != null && _selectedType != 'All') ||
+        (_selectedStatus != null && _selectedStatus != 'All');
+  }
+
+  List<MedicalReport> _applyFilters(List<MedicalReport> reports) {
+    var filtered = reports;
+
+    // Filter by date range
+    if (_startDate != null) {
+      filtered = filtered
+          .where((report) => report.reportDate.isAfter(_startDate!))
+          .toList();
+    }
+    if (_endDate != null) {
+      filtered = filtered
+          .where((report) => report.reportDate.isBefore(_endDate!))
+          .toList();
+    }
+
+    // Filter by type
+    if (_selectedType != null && _selectedType != 'All') {
+      filtered =
+          filtered.where((report) => report.testName == _selectedType).toList();
+    }
+
+    // Filter by category
+    if (_selectedCategory != 'All') {
+      // You can implement category filtering based on your data structure
+      // For now, it's a placeholder
+      filtered = filtered
+          .where((report) =>
+              report.testType.contains(_selectedCategory.toLowerCase()))
+          .toList();
+    }
+
+    return filtered;
   }
 }

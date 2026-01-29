@@ -1,65 +1,40 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/empty_state_widget.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../reports/providers/report_provider.dart';
 import '../../reports/models/test_type_model.dart';
 import '../../reports/screens/test_detail_screen.dart';
+import '../../reports/screens/upload_report_screen.dart';
 import '../../notifications/screens/notifications_screen.dart';
 import '../widgets/health_summary_card.dart';
 import '../widgets/recent_report_card.dart';
 import '../widgets/test_search_button.dart';
+import 'search_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({Key? key}) : super(key: key);
+  final VoidCallback? onNavigateToReports;
+  final VoidCallback? onNavigateToProfile;
+
+  const HomeScreen({
+    Key? key,
+    this.onNavigateToReports,
+    this.onNavigateToProfile,
+  }) : super(key: key);
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final TextEditingController _searchController = TextEditingController();
-  final FocusNode _searchFocusNode = FocusNode();
-  List<TestType> _filteredTests = [];
-  bool _isSearchActive = false;
-
   @override
   void initState() {
     super.initState();
-    _filteredTests = TestTypeData.availableTests;
-
-    // Listen to search focus
-    _searchFocusNode.addListener(() {
-      setState(() {
-        _isSearchActive =
-            _searchFocusNode.hasFocus || _searchController.text.isNotEmpty;
-      });
-    });
 
     // Fetch reports when screen loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ReportProvider>().fetchReports();
-    });
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    _searchFocusNode.dispose();
-    super.dispose();
-  }
-
-  void _onSearchChanged(String query) {
-    setState(() {
-      if (query.isEmpty) {
-        _filteredTests = TestTypeData.availableTests;
-      } else {
-        _filteredTests = TestTypeData.availableTests
-            .where((test) =>
-                test.name.toLowerCase().contains(query.toLowerCase()) ||
-                test.category.toLowerCase().contains(query.toLowerCase()))
-            .toList();
-      }
     });
   }
 
@@ -110,12 +85,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     _buildSearchBar(),
                     const SizedBox(height: 24),
 
-                    // Show Available Tests only when search is active
-                    if (_isSearchActive) ...[
-                      _buildAvailableTestsSection(),
-                      const SizedBox(height: 24),
-                    ],
-
                     // Recent Reports (always visible)
                     _buildRecentReportsSection(),
                   ],
@@ -141,15 +110,36 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           // Logo
           Container(
-            padding: const EdgeInsets.all(10),
+            width: 48,
+            height: 48,
             decoration: BoxDecoration(
               gradient: AppColors.primaryGradient,
               borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withOpacity(0.2),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-            child: const Icon(
-              Icons.medication,
-              color: Colors.white,
-              size: 24,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                const Icon(
+                  Icons.favorite,
+                  color: Colors.white,
+                  size: 22,
+                ),
+                Positioned(
+                  bottom: 10,
+                  child: Container(
+                    width: 28,
+                    height: 1,
+                    color: Colors.white.withOpacity(0.6),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(width: 12),
@@ -198,18 +188,22 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(width: 8),
           // Profile Icon
           GestureDetector(
-            onTap: () {
-              // TODO: Navigate to profile
-            },
-            child: CircleAvatar(
-              radius: 20,
-              backgroundColor: AppColors.secondary,
-              child: Text(
-                userName[0].toUpperCase(),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
+            onTap: widget.onNavigateToProfile,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                child: CircleAvatar(
+                  radius: 20,
+                  backgroundColor: AppColors.secondary,
+                  child: Text(
+                    userName[0].toUpperCase(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -241,109 +235,39 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSearchBar() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-      ),
-      child: TextField(
-        controller: _searchController,
-        focusNode: _searchFocusNode,
-        onChanged: _onSearchChanged,
-        decoration: InputDecoration(
-          hintText: 'Search for tests...',
-          prefixIcon: const Icon(Icons.search, color: AppColors.textSecondary),
-          suffixIcon: _searchController.text.isNotEmpty
-              ? IconButton(
-                  icon: const Icon(Icons.clear, color: AppColors.textSecondary),
-                  onPressed: () {
-                    _searchController.clear();
-                    _onSearchChanged('');
-                    _searchFocusNode.unfocus();
-                  },
-                )
-              : null,
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 14,
+    return GestureDetector(
+      onTap: () {
+        // Navigate to Search Screen
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const SearchScreen(),
           ),
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE5E7EB)),
+        ),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.search, color: AppColors.textSecondary),
+            const SizedBox(width: 12),
+            Text(
+              'Search for tests...',
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: AppColors.textHint,
+                  ),
+            ),
+          ],
         ),
       ),
-    );
-  }
-
-  Widget _buildAvailableTestsSection() {
-    if (_filteredTests.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            children: [
-              const Icon(
-                Icons.search_off,
-                size: 64,
-                color: AppColors.textHint,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'No tests found',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          _searchController.text.isEmpty ? 'Available Tests' : 'Search Results',
-          style: Theme.of(context).textTheme.headlineSmall,
-        ),
-        const SizedBox(height: 12),
-        ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: _filteredTests.length,
-          separatorBuilder: (context, index) => const SizedBox(height: 8),
-          itemBuilder: (context, index) {
-            final test = _filteredTests[index];
-            return TestSearchButton(
-              testType: test,
-              onTap: () => _navigateToTestDetail(test.name),
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTestTypeButtons() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Available Tests',
-          style: Theme.of(context).textTheme.headlineSmall,
-        ),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: TestTypeData.availableTests.take(8).map((test) {
-            return TestSearchButton(
-              testType: test,
-              onTap: () => _navigateToTestDetail(test.name),
-            );
-          }).toList(),
-        ),
-      ],
     );
   }
 
@@ -353,35 +277,19 @@ class _HomeScreenState extends State<HomeScreen> {
         final recentReports = reportProvider.getRecentReports(limit: 3);
 
         if (recentReports.isEmpty) {
-          return Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE5E7EB)),
-            ),
-            child: Column(
-              children: [
-                Icon(
-                  Icons.folder_open_outlined,
-                  size: 48,
-                  color: AppColors.textHint,
+          return EmptyStateWidget(
+            icon: Icons.folder_open_outlined,
+            title: 'No reports yet',
+            message: 'Upload your first medical report to track your health',
+            actionText: 'Upload Report',
+            onAction: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const UploadReportScreen(),
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  'No reports yet',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Upload your first medical report',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
+              );
+            },
           );
         }
 
@@ -396,9 +304,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
                 TextButton(
-                  onPressed: () {
-                    // Navigate to Reports tab
-                  },
+                  onPressed: widget.onNavigateToReports,
                   child: const Text('View All'),
                 ),
               ],
@@ -410,12 +316,21 @@ class _HomeScreenState extends State<HomeScreen> {
               itemCount: recentReports.length,
               separatorBuilder: (context, index) => const SizedBox(height: 12),
               itemBuilder: (context, index) {
-                return RecentReportCard(report: recentReports[index]);
+                return RecentReportCard(
+                  report: recentReports[index],
+                  index: index,
+                );
               },
             ),
           ],
         );
       },
     );
+  }
+
+  void _switchToReportsTab(BuildContext context) {
+    // This will be handled by MainScreen's IndexedStack
+    // We'll use a different approach - direct navigation to reports
+    Navigator.pushNamed(context, '/reports');
   }
 }

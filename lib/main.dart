@@ -10,6 +10,7 @@ import 'features/auth/screens/forgot_password_screen.dart';
 import 'features/auth/screens/reset_password_screen.dart';
 import 'features/auth/screens/success_screen.dart';
 import 'features/main/screens/main_screen.dart';
+import 'test_connection.dart';
 
 void main() {
   runApp(const MedTrackApp());
@@ -89,6 +90,11 @@ class MedTrackApp extends StatelessWidget {
 
             case '/home':
               return MaterialPageRoute(builder: (_) => const MainScreen());
+
+            case '/test-connection':
+              return MaterialPageRoute(
+                builder: (_) => const ConnectionTestScreen(),
+              );
 
             default:
               return MaterialPageRoute(

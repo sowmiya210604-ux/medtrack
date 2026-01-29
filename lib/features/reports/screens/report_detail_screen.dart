@@ -198,11 +198,6 @@ Test Results:
               _buildResultsTable(context),
               const SizedBox(height: 24),
             ],
-
-            // Extracted Text (if available)
-            if (widget.report.extractedText != null &&
-                widget.report.extractedText!.isNotEmpty)
-              _buildExtractedText(context),
           ],
         ),
       ),
@@ -794,39 +789,6 @@ Test Results:
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildExtractedText(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Extracted Text',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 16),
-          Container(
-            constraints: const BoxConstraints(maxHeight: 300),
-            child: SingleChildScrollView(
-              child: Text(
-                widget.report.extractedText!,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontFamily: 'monospace',
-                      height: 1.5,
-                    ),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
