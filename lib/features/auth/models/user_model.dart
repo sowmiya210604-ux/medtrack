@@ -26,7 +26,8 @@ class User {
       id: json['id'],
       name: json['name'],
       email: json['email'],
-      phone: json['phone'],
+      phone:
+          json['phoneNumber'] ?? json['phone'] ?? '', // Handle both field names
       profileImage: json['profileImage'],
       dateOfBirth: json['dateOfBirth'] != null
           ? DateTime.parse(json['dateOfBirth'])

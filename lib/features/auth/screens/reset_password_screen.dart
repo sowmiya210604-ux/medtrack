@@ -27,10 +27,36 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   Future<void> _handleResetPassword() async {
     if (_formKey.currentState!.validate()) {
       final authProvider = context.read<AuthProvider>();
+      
+      // Show loading message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+              SizedBox(width: 12),
+              Text('Updating your password...'),
+            ],
+          ),
+          duration: Duration(seconds: 30),
+          backgroundColor: AppColors.primary,
+        ),
+      );
+      
       final success = await authProvider.resetPassword(
         _passwordController.text,
         _confirmPasswordController.text,
       );
+      
+      // Clear loading message
+      ScaffoldMessenger.of(context).clearSnackBars();
 
       if (success && mounted) {
         Navigator.of(context).pushNamedAndRemoveUntil(
@@ -38,16 +64,24 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           (route) => false,
           arguments: {
             'title': 'Password Reset Successful!',
-            'message': 'Your password has been changed successfully.',
+            'message': 'Your password has been changed successfully. A confirmation email has been sent. Please login with your new password.',
             'nextRoute': '/login',
           },
         );
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content:
-                Text(authProvider.errorMessage ?? 'Failed to reset password'),
+            content: Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.white),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(authProvider.errorMessage ?? 'Failed to reset password. Please try again.'),
+                ),
+              ],
+            ),
             backgroundColor: AppColors.error,
+            duration: Duration(seconds: 5),
           ),
         );
       }
@@ -79,13 +113,20 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                 const SizedBox(height: 80),
                 // Title
                 Text(
-                  'Enter New Password',
+                  'Set New Password',
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
                   textAlign: TextAlign.left,
                 ),
-                const SizedBox(height: 40),
+                const SizedBox(height: 8),
+                Text(
+                  'After setting your new password, you must login again with the new credentials.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.grey[600],
+                      ),
+                ),
+                const SizedBox(height: 32),
                 // New Password
                 TextFormField(
                   controller: _passwordController,
@@ -150,7 +191,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                   },
                 ),
                 const SizedBox(height: 40),
-                // Login Button
+                // Reset Password Button
                 Consumer<AuthProvider>(
                   builder: (context, authProvider, _) {
                     return ElevatedButton(
@@ -169,7 +210,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                                     AlwaysStoppedAnimation<Color>(Colors.white),
                               ),
                             )
-                          : const Text('Login'),
+                          : const Text('Reset Password'),
                     );
                   },
                 ),

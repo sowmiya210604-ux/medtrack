@@ -5,6 +5,7 @@ class StorageHelper {
   static const _tokenKey = 'auth_token';
   static const _userKey = 'user_data';
   static const _emailKey = 'pending_email';
+  static const _otpKey = 'pending_otp';
 
   static Future<void> saveToken(String token) async {
     final prefs = await SharedPreferences.getInstance();
@@ -40,6 +41,16 @@ class StorageHelper {
   static Future<String?> getPendingEmail() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_emailKey);
+  }
+
+  static Future<void> savePendingOtp(String otp) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_otpKey, otp);
+  }
+
+  static Future<String?> getPendingOtp() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_otpKey);
   }
 
   static Future<void> clearAll() async {

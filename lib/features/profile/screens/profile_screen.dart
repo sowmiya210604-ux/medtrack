@@ -19,6 +19,49 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final ImagePicker _picker = ImagePicker();
+  bool _isLoadingProfile = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Fetch latest profile data when screen loads
+    _fetchProfileData();
+  }
+
+  Future<void> _fetchProfileData() async {
+    setState(() {
+      _isLoadingProfile = true;
+    });
+
+    final authProvider = context.read<AuthProvider>();
+    final success = await authProvider.fetchProfile();
+
+    if (mounted) {
+      setState(() {
+        _isLoadingProfile = false;
+      });
+
+      if (!success) {
+        // If profile fetch failed and user was logged out,
+        // the auth guard will handle redirection
+        if (authProvider.isAuthenticated) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                authProvider.errorMessage ?? 'Failed to load profile',
+              ),
+              backgroundColor: AppColors.error,
+              action: SnackBarAction(
+                label: 'Retry',
+                textColor: Colors.white,
+                onPressed: _fetchProfileData,
+              ),
+            ),
+          );
+        }
+      }
+    }
+  }
 
   Future<void> _pickImage(ImageSource source) async {
     try {
@@ -169,207 +212,266 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
+    return WillPopScope(
+      onWillPop: () async {
+        // Override back button to navigate to home screen
+        Navigator.of(context).pushReplacementNamed('/home');
+        return false; // Prevent default back navigation
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: AppColors.primary),
+            onPressed: () {
+              // Navigate to home screen instead of popping
+              Navigator.of(context).pushReplacementNamed('/home');
+            },
+            tooltip: 'Back to Home',
+          ),
+          title: const Text(
+            'Profile',
+            style: TextStyle(color: AppColors.textPrimary),
+          ),
+        ),
+        body: SafeArea(
         child: Consumer<AuthProvider>(
           builder: (context, authProvider, _) {
             final user = authProvider.currentUser;
 
-            if (user == null) {
+            // Show loading indicator while fetching profile
+            if (_isLoadingProfile || authProvider.isLoading) {
               return const Center(
-                child: Text('No user data available'),
+                child: CircularProgressIndicator(),
               );
             }
 
-            return SingleChildScrollView(
-              child: Column(
-                children: [
-                  // Profile Header
-                  _buildProfileHeader(context, user.name, user.email),
-
-                  const SizedBox(height: 24),
-
-                  // Personal Information
-                  _buildSection(
-                    context,
-                    'Personal Information',
-                    [
-                      _buildInfoTile(
-                        context,
-                        'Full Name',
-                        user.name,
-                        Icons.person,
-                      ),
-                      _buildInfoTile(
-                        context,
-                        'Email',
-                        user.email,
-                        Icons.email,
-                      ),
-                      _buildInfoTile(
-                        context,
-                        'Phone',
-                        user.phone,
-                        Icons.phone,
-                      ),
-                      if (user.dateOfBirth != null)
-                        _buildInfoTile(
-                          context,
-                          'Date of Birth',
-                          '${user.dateOfBirth!.day}/${user.dateOfBirth!.month}/${user.dateOfBirth!.year}',
-                          Icons.cake,
-                        ),
-                      if (user.gender != null)
-                        _buildInfoTile(
-                          context,
-                          'Gender',
-                          user.gender!,
-                          Icons.wc,
-                        ),
-                      if (user.bloodGroup != null)
-                        _buildInfoTile(
-                          context,
-                          'Blood Group',
-                          user.bloodGroup!,
-                          Icons.bloodtype,
-                        ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Settings
-                  _buildSection(
-                    context,
-                    'Settings',
-                    [
-                      _buildActionTile(
-                        context,
-                        'Edit Profile',
-                        Icons.edit,
-                        () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const EditProfileScreen(),
-                            ),
-                          );
-                        },
-                      ),
-                      _buildActionTile(
-                        context,
-                        'Notifications',
-                        Icons.notifications,
-                        () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  const NotificationSettingsScreen(),
-                            ),
-                          );
-                        },
-                      ),
-                      _buildActionTile(
-                        context,
-                        'Privacy & Security',
-                        Icons.security,
-                        () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  const PrivacySecurityScreen(),
-                            ),
-                          );
-                        },
-                      ),
-                      _buildActionTile(
-                        context,
-                        'Help & Support',
-                        Icons.help,
-                        () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const HelpSupportScreen(),
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // About
-                  _buildSection(
-                    context,
-                    'About',
-                    [
-                      _buildActionTile(
-                        context,
-                        'Terms of Service',
-                        Icons.description,
-                        () {
-                          // TODO: Show terms
-                        },
-                      ),
-                      _buildActionTile(
-                        context,
-                        'Privacy Policy',
-                        Icons.policy,
-                        () {
-                          // TODO: Show privacy policy
-                        },
-                      ),
-                      _buildInfoTile(
-                        context,
-                        'App Version',
-                        '1.0.0',
-                        Icons.info,
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Logout Button
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        final confirm = await _showLogoutConfirmation(context);
-                        if (confirm && context.mounted) {
-                          await authProvider.logout();
-                          if (context.mounted) {
-                            Navigator.of(context).pushNamedAndRemoveUntil(
-                              '/login',
-                              (route) => false,
-                            );
-                          }
-                        }
-                      },
-                      icon: const Icon(Icons.logout, color: AppColors.error),
-                      label: const Text(
-                        'Logout',
-                        style: TextStyle(color: AppColors.error),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: AppColors.error),
-                        minimumSize: const Size(double.infinity, 50),
+            // Show error state if no user data
+            if (user == null) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.person_off,
+                      size: 64,
+                      color: Colors.grey,
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'No user data available',
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: Colors.grey,
                       ),
                     ),
-                  ),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      onPressed: _fetchProfileData,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              );
+            }
 
-                  const SizedBox(height: 24),
-                ],
+            return RefreshIndicator(
+              onRefresh: _fetchProfileData,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: Column(
+                  children: [
+                    // Profile Header
+                    _buildProfileHeader(context, user.name, user.email),
+
+                    const SizedBox(height: 24),
+
+                    // Personal Information
+                    _buildSection(
+                      context,
+                      'Personal Information',
+                      [
+                        _buildInfoTile(
+                          context,
+                          'Full Name',
+                          user.name,
+                          Icons.person,
+                        ),
+                        _buildInfoTile(
+                          context,
+                          'Email',
+                          user.email,
+                          Icons.email,
+                        ),
+                        _buildInfoTile(
+                          context,
+                          'Phone',
+                          user.phone,
+                          Icons.phone,
+                        ),
+                        if (user.dateOfBirth != null)
+                          _buildInfoTile(
+                            context,
+                            'Date of Birth',
+                            '${user.dateOfBirth!.day}/${user.dateOfBirth!.month}/${user.dateOfBirth!.year}',
+                            Icons.cake,
+                          ),
+                        if (user.gender != null)
+                          _buildInfoTile(
+                            context,
+                            'Gender',
+                            user.gender!,
+                            Icons.wc,
+                          ),
+                        if (user.bloodGroup != null)
+                          _buildInfoTile(
+                            context,
+                            'Blood Group',
+                            user.bloodGroup!,
+                            Icons.bloodtype,
+                          ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Settings
+                    _buildSection(
+                      context,
+                      'Settings',
+                      [
+                        _buildActionTile(
+                          context,
+                          'Edit Profile',
+                          Icons.edit,
+                          () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const EditProfileScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        _buildActionTile(
+                          context,
+                          'Notifications',
+                          Icons.notifications,
+                          () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    const NotificationSettingsScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        _buildActionTile(
+                          context,
+                          'Privacy & Security',
+                          Icons.security,
+                          () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    const PrivacySecurityScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        _buildActionTile(
+                          context,
+                          'Help & Support',
+                          Icons.help,
+                          () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const HelpSupportScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // About
+                    _buildSection(
+                      context,
+                      'About',
+                      [
+                        _buildActionTile(
+                          context,
+                          'Terms of Service',
+                          Icons.description,
+                          () {
+                            // TODO: Show terms
+                          },
+                        ),
+                        _buildActionTile(
+                          context,
+                          'Privacy Policy',
+                          Icons.policy,
+                          () {
+                            // TODO: Show privacy policy
+                          },
+                        ),
+                        _buildInfoTile(
+                          context,
+                          'App Version',
+                          '1.0.0',
+                          Icons.info,
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // Logout Button
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          final confirm =
+                              await _showLogoutConfirmation(context);
+                          if (confirm && context.mounted) {
+                            await authProvider.logout();
+                            if (context.mounted) {
+                              Navigator.of(context).pushNamedAndRemoveUntil(
+                                '/login',
+                                (route) => false,
+                              );
+                            }
+                          }
+                        },
+                        icon: const Icon(Icons.logout, color: AppColors.error),
+                        label: const Text(
+                          'Logout',
+                          style: TextStyle(color: AppColors.error),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: AppColors.error),
+                          minimumSize: const Size(double.infinity, 50),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+                  ],
+                ),
               ),
             );
           },
         ),
       ),
+    ),
     );
   }
 

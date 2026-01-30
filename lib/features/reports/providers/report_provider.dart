@@ -2,6 +2,9 @@ import 'package:flutter/foundation.dart';
 import '../models/report_model.dart';
 import '../models/test_type_model.dart';
 import '../../../core/services/health_analysis_service.dart';
+import '../../../core/services/http_service.dart';
+import '../../../core/config/api_config.dart';
+import '../../../core/utils/storage_helper.dart';
 
 class ReportProvider extends ChangeNotifier {
   List<MedicalReport> _reports = [];
@@ -19,15 +22,37 @@ class ReportProvider extends ChangeNotifier {
   // Fetch all reports
   Future<void> fetchReports() async {
     _isLoading = true;
+    _errorMessage = null; // Clear previous errors
     notifyListeners();
 
     try {
-      // TODO: Call backend API
-      await Future.delayed(const Duration(seconds: 1));
+      // Call backend API to fetch reports
+      final response = await HttpService.get(
+        ApiConfig.reportUrl,
+        requiresAuth: true,
+      );
 
-      // Mock data
-      _reports = _generateMockReports();
-      _testResults = _generateMockTestResults();
+      // Parse reports from response
+      if (response['reports'] != null) {
+        final reportsList = response['reports'] as List;
+        _reports =
+            reportsList.map((json) => MedicalReport.fromJson(json)).toList();
+
+        // Extract all test results from reports
+        _testResults.clear();
+        for (var report in reportsList) {
+          if (report['testResults'] != null && report['testResults'] is List) {
+            final testResultsData = report['testResults'] as List;
+            for (var testResult in testResultsData) {
+              _testResults.add(TestResult.fromJson(testResult));
+            }
+          }
+        }
+      } else {
+        // Empty response is valid - no reports yet
+        _reports = [];
+        _testResults = [];
+      }
 
       // Analyze health conditions from reports
       _analyzeHealthConditions();
@@ -35,9 +60,11 @@ class ReportProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     } catch (e) {
+      print('❌ Failed to fetch reports: $e');
       _errorMessage = 'Failed to fetch reports: $e';
       _isLoading = false;
       notifyListeners();
+      rethrow; // Re-throw to allow UI to handle
     }
   }
 
@@ -54,23 +81,51 @@ class ReportProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // TODO: Call backend API to upload image and data
-      await Future.delayed(const Duration(seconds: 2));
+      // Check if user is authenticated
+      final token = await StorageHelper.getToken();
+      if (token == null || token.isEmpty) {
+        _errorMessage = 'Not authenticated. Please login first.';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
 
-      // Create new report
-      final newReport = MedicalReport(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        userId: '1',
-        testType: testType,
-        testName: testName,
-        reportDate: reportDate,
-        imageUrl: imagePath,
-        extractedText: extractedText,
-        testResults: testResults,
-        uploadedAt: DateTime.now(),
+      // Extract test data from extracted text
+      final analyzedTestResults = _extractTestDataFromText(extractedText ?? '');
+
+      // Merge with provided test results
+      final allTestResults = <Map<String, dynamic>>[];
+      if (testResults != null) {
+        allTestResults.add(testResults);
+      }
+      allTestResults.addAll(analyzedTestResults);
+
+      // Call backend API to upload report
+      final response = await HttpService.post(
+        ApiConfig.reportUrl,
+        {
+          'testType': testType,
+          'reportDate': reportDate.toIso8601String(),
+          'ocrText': extractedText,
+          'testResults': allTestResults,
+        },
+        requiresAuth: true,
       );
 
-      _reports.insert(0, newReport);
+      // Get the created report from response
+      if (response['report'] != null) {
+        final reportData = response['report'];
+        final newReport = MedicalReport.fromJson(reportData);
+        _reports.insert(0, newReport);
+
+        // Add test results from backend response
+        if (reportData['testResults'] != null) {
+          final testResultsList = reportData['testResults'] as List;
+          for (var testResult in testResultsList) {
+            _testResults.add(TestResult.fromJson(testResult));
+          }
+        }
+      }
 
       // Re-analyze health conditions
       _analyzeHealthConditions();
@@ -84,6 +139,95 @@ class ReportProvider extends ChangeNotifier {
       notifyListeners();
       return false;
     }
+  }
+
+  // Extract test data from OCR text
+  List<Map<String, dynamic>> _extractTestDataFromText(String text) {
+    final List<Map<String, dynamic>> results = [];
+    final lines = text.split('\n');
+
+    // Common test parameter patterns
+    final patterns = [
+      RegExp(r'(Hemoglobin|Hb|HGB)\s*:?\s*([\d.]+)\s*(g/dL|mg/dL)?',
+          caseSensitive: false),
+      RegExp(r'(Glucose|Blood Sugar|Sugar)\s*:?\s*([\d.]+)\s*(mg/dL)?',
+          caseSensitive: false),
+      RegExp(r'(Cholesterol|CHOL)\s*:?\s*([\d.]+)\s*(mg/dL)?',
+          caseSensitive: false),
+      RegExp(r'(RBC|Red Blood Cell)\s*:?\s*([\d.]+)\s*(million/µL)?',
+          caseSensitive: false),
+      RegExp(r'(WBC|White Blood Cell)\s*:?\s*([\d.]+)\s*(cells/µL)?',
+          caseSensitive: false),
+      RegExp(r'(Platelets|PLT)\s*:?\s*([\d.]+)\s*(thousands/µL)?',
+          caseSensitive: false),
+      RegExp(r'(Creatinine|CREAT)\s*:?\s*([\d.]+)\s*(mg/dL)?',
+          caseSensitive: false),
+      RegExp(r'(Urea|BUN)\s*:?\s*([\d.]+)\s*(mg/dL)?', caseSensitive: false),
+    ];
+
+    for (var line in lines) {
+      for (var pattern in patterns) {
+        final match = pattern.firstMatch(line);
+        if (match != null) {
+          final parameterName = match.group(1) ?? '';
+          final value = match.group(2) ?? '';
+          final unit = match.group(3) ?? '';
+
+          // Determine status based on value and parameter
+          final status =
+              _determineStatus(parameterName, double.tryParse(value) ?? 0);
+
+          results.add({
+            'testName': parameterName,
+            'parameterName': parameterName,
+            'value': value,
+            'unit': unit,
+            'status': status,
+            'referenceRange': _getReferenceRange(parameterName),
+          });
+        }
+      }
+    }
+
+    return results;
+  }
+
+  String _determineStatus(String parameter, double value) {
+    final param = parameter.toLowerCase();
+
+    if (param.contains('hemoglobin') ||
+        param.contains('hb') ||
+        param.contains('hgb')) {
+      return value < 12 ? 'LOW' : (value > 16 ? 'HIGH' : 'NORMAL');
+    } else if (param.contains('glucose') || param.contains('sugar')) {
+      return value < 70 ? 'LOW' : (value > 100 ? 'HIGH' : 'NORMAL');
+    } else if (param.contains('cholesterol')) {
+      return value > 200 ? 'HIGH' : 'NORMAL';
+    } else if (param.contains('rbc')) {
+      return value < 4.5 ? 'LOW' : (value > 5.5 ? 'HIGH' : 'NORMAL');
+    } else if (param.contains('wbc')) {
+      return value < 4000 ? 'LOW' : (value > 11000 ? 'HIGH' : 'NORMAL');
+    }
+
+    return 'NORMAL';
+  }
+
+  String? _getReferenceRange(String parameter) {
+    final param = parameter.toLowerCase();
+
+    if (param.contains('hemoglobin') || param.contains('hb')) {
+      return '12-16 g/dL';
+    } else if (param.contains('glucose')) {
+      return '70-100 mg/dL';
+    } else if (param.contains('cholesterol')) {
+      return '<200 mg/dL';
+    } else if (param.contains('rbc')) {
+      return '4.5-5.5 million/µL';
+    } else if (param.contains('wbc')) {
+      return '4000-11000 cells/µL';
+    }
+
+    return null;
   }
 
   // Get reports by test type
@@ -256,5 +400,16 @@ class ReportProvider extends ChangeNotifier {
         testDate: now.subtract(const Duration(days: 150)),
       ),
     ];
+  }
+
+  TestStatus _parseTestStatus(String status) {
+    switch (status.toUpperCase()) {
+      case 'HIGH':
+        return TestStatus.high;
+      case 'LOW':
+        return TestStatus.low;
+      default:
+        return TestStatus.normal;
+    }
   }
 }

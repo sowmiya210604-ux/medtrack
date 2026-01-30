@@ -1,12 +1,27 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+
 class ApiConfig {
   static const bool isProduction = false;
 
-  // Monolithic backend on single port
-  static const String _devBaseUrl = 'http://localhost:5000/api';
+  // Automatically detect platform and use correct URL
+  static String get _devBaseUrl {
+    if (kIsWeb) {
+      // Web can use localhost
+      return 'http://localhost:5000/api';
+    } else if (Platform.isAndroid || Platform.isIOS) {
+      // Mobile devices - use localhost via ADB reverse proxy
+      // Run: adb reverse tcp:5000 tcp:5000
+      return 'http://localhost:5000/api';
+    } else {
+      // Desktop can use localhost
+      return 'http://localhost:5000/api';
+    }
+  }
+
   static const String _prodBaseUrl = 'https://api.medtrack.com/api';
 
-  static String get baseUrl =>
-      isProduction ? _prodBaseUrl : _devBaseUrl;
+  static String get baseUrl => isProduction ? _prodBaseUrl : _devBaseUrl;
 
   // All endpoints use the same base URL (monolithic architecture)
   static String get authUrl => '$baseUrl/auth';

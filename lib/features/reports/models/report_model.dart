@@ -31,16 +31,18 @@ class MedicalReport {
 
   factory MedicalReport.fromJson(Map<String, dynamic> json) {
     return MedicalReport(
-      id: json['id'],
-      userId: json['userId'],
-      testType: json['testType'],
-      testName: json['testName'],
-      reportDate: DateTime.parse(json['reportDate']),
+      id: json['id'].toString(),
+      userId: json['userId'].toString(),
+      testType: json['testType'] ?? '',
+      testName: json['testName'] ?? json['testType'] ?? 'Medical Report',
+      reportDate: DateTime.parse(json['reportDate'] ?? json['createdAt']),
       imageUrl: json['imageUrl'],
       pdfUrl: json['pdfUrl'],
-      extractedText: json['extractedText'],
-      testResults: json['testResults'],
-      uploadedAt: DateTime.parse(json['uploadedAt']),
+      extractedText: json['extractedText'] ?? json['ocrText'],
+      testResults: json['testResults'] is List ? null : json['testResults'],
+      uploadedAt: DateTime.parse(json['uploadedAt'] ??
+          json['createdAt'] ??
+          DateTime.now().toIso8601String()),
       doctorName: json['doctorName'],
       labName: json['labName'],
     );
@@ -90,20 +92,62 @@ class TestResult {
   });
 
   factory TestResult.fromJson(Map<String, dynamic> json) {
+    // Parse value - backend stores as string
+    double parsedValue = 0.0;
+    if (json['value'] is num) {
+      parsedValue = (json['value'] as num).toDouble();
+    } else if (json['value'] is String) {
+      parsedValue = double.tryParse(json['value']) ?? 0.0;
+    }
+
+    // Parse reference range into normalMin and normalMax
+    double? normalMin;
+    double? normalMax;
+
+    if (json['normalMin'] != null && json['normalMax'] != null) {
+      normalMin = (json['normalMin'] as num?)?.toDouble();
+      normalMax = (json['normalMax'] as num?)?.toDouble();
+    } else if (json['referenceRange'] != null &&
+        json['referenceRange'] is String) {
+      // Parse "70-100" or "<200" or ">10" format
+      final range = json['referenceRange'] as String;
+      if (range.contains('-')) {
+        final parts = range.replaceAll(RegExp(r'[^0-9.-]'), '').split('-');
+        if (parts.length == 2) {
+          normalMin = double.tryParse(parts[0]);
+          normalMax = double.tryParse(parts[1]);
+        }
+      } else if (range.startsWith('<')) {
+        normalMax = double.tryParse(range.replaceAll(RegExp(r'[^0-9.]'), ''));
+      } else if (range.startsWith('>')) {
+        normalMin = double.tryParse(range.replaceAll(RegExp(r'[^0-9.]'), ''));
+      }
+    }
+
+    // Parse status
+    TestStatus parsedStatus = TestStatus.normal;
+    if (json['status'] != null) {
+      final statusStr = json['status'].toString().toLowerCase();
+      if (statusStr == 'high') {
+        parsedStatus = TestStatus.high;
+      } else if (statusStr == 'low') {
+        parsedStatus = TestStatus.low;
+      }
+    }
+
     return TestResult(
-      id: json['id'],
-      reportId: json['reportId'],
-      testName: json['testName'],
-      parameterName: json['parameterName'],
-      value: json['value'].toDouble(),
-      unit: json['unit'],
-      normalMin: json['normalMin']?.toDouble(),
-      normalMax: json['normalMax']?.toDouble(),
-      status: TestStatus.values.firstWhere(
-        (e) => e.name == json['status'],
-        orElse: () => TestStatus.normal,
-      ),
-      testDate: DateTime.parse(json['testDate']),
+      id: json['id'].toString(),
+      reportId: json['reportId'].toString(),
+      testName: json['testName'] ?? '',
+      parameterName: json['parameterName'] ?? '',
+      value: parsedValue,
+      unit: json['unit'] ?? '',
+      normalMin: normalMin,
+      normalMax: normalMax,
+      status: parsedStatus,
+      testDate: DateTime.parse(json['testDate'] ??
+          json['createdAt'] ??
+          DateTime.now().toIso8601String()),
     );
   }
 

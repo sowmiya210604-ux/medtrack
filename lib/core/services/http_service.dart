@@ -40,7 +40,7 @@ class HttpService {
     try {
       ApiConfig.log('POST: $url');
       ApiConfig.log('Body: ${_sanitize(body)}');
-      
+
       final headers = await _headers(requiresAuth);
 
       final response = await http
@@ -109,8 +109,11 @@ class HttpService {
 
     if (auth) {
       final token = await StorageHelper.getToken();
-      if (token != null) {
+      if (token != null && token.isNotEmpty) {
         headers['Authorization'] = 'Bearer $token';
+        ApiConfig.log('Auth token attached: ${token.substring(0, 20)}...');
+      } else {
+        ApiConfig.log('⚠️ WARNING: No auth token found in storage!');
       }
     }
     return headers;
@@ -118,22 +121,34 @@ class HttpService {
 
   static Map<String, dynamic> _handle(http.Response response) {
     ApiConfig.log('Response: ${response.statusCode}');
-    
+
     if (response.body.isEmpty) {
       throw ApiException(response.statusCode, 'Empty response from server');
     }
-    
+
     try {
       final data = jsonDecode(response.body);
-      
+
       if (response.statusCode >= 200 && response.statusCode < 300) {
         ApiConfig.log('Success: ${data['message'] ?? 'OK'}');
         return data;
       }
-      
+
+      // Handle unauthorized/forbidden responses
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        // Clear storage and force re-login
+        StorageHelper.clearAll();
+        throw ApiException(
+          response.statusCode,
+          data['error'] ?? 'Unauthorized. Please login again.',
+        );
+      }
+
       throw ApiException(
         response.statusCode,
-        data['message'] ?? 'Request failed with status ${response.statusCode}',
+        data['error'] ??
+            data['message'] ??
+            'Request failed with status ${response.statusCode}',
       );
     } catch (e) {
       if (e is ApiException) rethrow;
@@ -154,7 +169,7 @@ class ApiException implements Exception {
   final int statusCode;
   final String message;
   ApiException(this.statusCode, this.message);
-  
+
   @override
   String toString() => message;
 }

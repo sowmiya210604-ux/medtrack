@@ -203,6 +203,27 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
       if (!confirm) return;
     }
 
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Uploading and analyzing report...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
     final reportProvider = context.read<ReportProvider>();
     final success = await reportProvider.uploadReport(
       testType: _selectedTestType!.id,
@@ -212,17 +233,252 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
       extractedText: _extractedText,
     );
 
+    // Close loading dialog
+    if (mounted) Navigator.pop(context);
+
     if (success && mounted) {
+      // Show success message
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Report uploaded successfully!'),
+          content: Text('✅ Report uploaded and analyzed successfully!'),
           backgroundColor: AppColors.success,
+          duration: Duration(seconds: 2),
         ),
       );
-      Navigator.pop(context);
+
+      // Show results dialog with analyzed data
+      await _showAnalysisResults();
+
+      // Navigate back
+      if (mounted) Navigator.pop(context);
     } else if (mounted) {
-      _showError('Failed to upload report');
+      final errorMsg = reportProvider.errorMessage ?? 'Failed to upload report';
+
+      // Check if auth error
+      if (errorMsg.contains('authenticate') ||
+          errorMsg.contains('401') ||
+          errorMsg.contains('Unauthorized')) {
+        _showError('Session expired. Please login again.');
+        // Navigate to login after 2 seconds
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, '/login');
+          }
+        });
+      } else {
+        _showError(errorMsg);
+      }
     }
+  }
+
+  Future<void> _showAnalysisResults() async {
+    final reportProvider = context.read<ReportProvider>();
+    final latestReport =
+        reportProvider.reports.isNotEmpty ? reportProvider.reports.first : null;
+
+    if (latestReport == null) return;
+
+    await showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        child: Container(
+          constraints: const BoxConstraints(maxHeight: 500, maxWidth: 400),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.analytics,
+                      color: AppColors.primary, size: 32),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Analysis Complete',
+                      style:
+                          Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const Divider(),
+              const SizedBox(height: 16),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Test info
+                      _buildResultItem(
+                        'Test Type',
+                        latestReport.testName,
+                        Icons.medical_services,
+                      ),
+                      _buildResultItem(
+                        'Report Date',
+                        '${latestReport.reportDate.day}/${latestReport.reportDate.month}/${latestReport.reportDate.year}',
+                        Icons.calendar_today,
+                      ),
+
+                      const SizedBox(height: 16),
+                      Text(
+                        'Extracted Test Results',
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Show extracted test parameters
+                      if (latestReport.extractedText != null &&
+                          latestReport.extractedText!.isNotEmpty)
+                        ..._buildExtractedParameters(
+                            latestReport.extractedText!),
+
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.success.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.check_circle, color: AppColors.success),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Report data has been stored in database and is available for tracking.',
+                                style: TextStyle(fontSize: 12),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.done),
+                  label: const Text('Done'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildExtractedParameters(String extractedText) {
+    final List<Widget> widgets = [];
+    final lines = extractedText.split('\\n');
+
+    // Pattern to match test results
+    final pattern = RegExp(
+      r'(Hemoglobin|Hb|HGB|Glucose|Sugar|Cholesterol|RBC|WBC|Platelets|Creatinine|Urea)\\s*:?\\s*([\\d.]+)\\s*(g/dL|mg/dL|million/µL|cells/µL)?',
+      caseSensitive: false,
+    );
+
+    for (var line in lines) {
+      final match = pattern.firstMatch(line);
+      if (match != null) {
+        final parameter = match.group(1) ?? '';
+        final value = match.group(2) ?? '';
+        final unit = match.group(3) ?? '';
+
+        widgets.add(
+          Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.science,
+                    color: AppColors.primary, size: 20),
+              ),
+              title: Text(
+                parameter,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              trailing: Text(
+                '$value $unit',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primary,
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+    }
+
+    if (widgets.isEmpty) {
+      widgets.add(
+        const Card(
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'No test parameters detected in the extracted text.',
+              style: TextStyle(fontStyle: FontStyle.italic),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return widgets;
+  }
+
+  Widget _buildResultItem(String label, String value, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: AppColors.textSecondary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showError(String message) {

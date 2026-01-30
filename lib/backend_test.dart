@@ -36,9 +36,11 @@ class _BackendTestScreenState extends State<BackendTestScreen> {
     });
 
     try {
-      final response = await http.get(
-        Uri.parse('http://localhost:5000/api/health-check'),
-      ).timeout(const Duration(seconds: 5));
+      final response = await http
+          .get(
+            Uri.parse('http://localhost:5000/api/health-check'),
+          )
+          .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -67,16 +69,18 @@ class _BackendTestScreenState extends State<BackendTestScreen> {
     });
 
     try {
-      final response = await http.post(
-        Uri.parse('http://localhost:5000/api/auth/register'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'name': 'Test User',
-          'email': 'test${DateTime.now().millisecondsSinceEpoch}@test.com',
-          'phoneNumber': '9876543210',
-          'password': 'test123',
-        }),
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .post(
+            Uri.parse('http://localhost:5000/api/auth/register'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'name': 'Test User',
+              'email': 'test${DateTime.now().millisecondsSinceEpoch}@test.com',
+              'phoneNumber': '9876543210',
+              'password': 'test123',
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 201) {
         final data = jsonDecode(response.body);

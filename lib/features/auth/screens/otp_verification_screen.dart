@@ -31,6 +31,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   final int _maxAttempts = 5;
   bool _canResend = false;
   int _resendCountdown = 30;
+  bool _isLocked = false; // Lock state after 5 wrong attempts
 
   @override
   void initState() {
@@ -76,14 +77,34 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     final otp = _getOTP();
 
     if (otp.length != 6) {
-      _showMessage('Please enter complete OTP', isError: true);
+      _showMessage('Please enter complete 6-digit OTP', isError: true);
       return;
     }
 
     final authProvider = context.read<AuthProvider>();
-    final success = await authProvider.verifyOTP(otp);
+    bool success;
+
+    // Check if this is password reset flow
+    if (widget.isPasswordReset) {
+      success = await authProvider.verifyPasswordResetOTP(otp);
+    } else {
+      success = await authProvider.verifyOTP(otp);
+    }
 
     if (success && mounted) {
+      // Show success message
+      _showMessage(
+        widget.isPasswordReset
+            ? 'OTP verified! You can now set your new password.'
+            : 'Email verified successfully!',
+        isError: false,
+      );
+
+      // Navigate after short delay
+      await Future.delayed(Duration(milliseconds: 800));
+
+      if (!mounted) return;
+
       // Check if this is password reset flow
       if (widget.isPasswordReset) {
         Navigator.of(context).pushReplacementNamed('/reset-password');
@@ -104,24 +125,82 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       });
 
       if (_incorrectAttempts >= _maxAttempts) {
+        setState(() {
+          _isLocked = true;
+          _canResend = true; // Allow immediate resend when locked
+        });
+
         if (mounted) {
           _showMessage(
-            'Maximum attempts exceeded. Please resend OTP.',
+            'Maximum attempts exceeded. Please click "Resend OTP" to get a new code.',
             isError: true,
           );
           // Clear OTP fields
           for (var controller in _otpControllers) {
             controller.clear();
           }
-          _incorrectAttempts = 0;
-          _canResend = true;
         }
       } else {
         if (mounted) {
-          _showMessage(
-            'Invalid OTP. ${_maxAttempts - _incorrectAttempts} attempts remaining.',
-            isError: true,
-          );
+          final errorMsg = authProvider.errorMessage ?? 'Invalid OTP';
+
+          // Handle already verified case
+          if (errorMsg.contains('already verified') ||
+              errorMsg.contains('Please login')) {
+            _showMessage(
+              'Your account is already verified. Redirecting to login...',
+              isError: false,
+            );
+
+            // Redirect to login after 2 seconds
+            Future.delayed(const Duration(seconds: 2), () {
+              if (mounted) {
+                Navigator.of(context).pushNamedAndRemoveUntil(
+                  '/login',
+                  (route) => false,
+                );
+              }
+            });
+          }
+          // Handle OTP expired case
+          else if (errorMsg.contains('expired')) {
+            setState(() {
+              _isLocked = true;
+              _canResend = true;
+            });
+            _showMessage(
+              'OTP has expired. Please click \"Resend OTP\" to get a new code.',
+              isError: true,
+            );
+          }
+          // Handle max attempts from backend
+          else if (errorMsg.contains('Maximum verification attempts')) {
+            setState(() {
+              _isLocked = true;
+              _canResend = true;
+            });
+            _showMessage(
+              'Maximum attempts exceeded on server. Please click \"Resend OTP\" to get a new code.',
+              isError: true,
+            );
+          }
+          // Handle no OTP found
+          else if (errorMsg.contains('No OTP found')) {
+            setState(() {
+              _canResend = true;
+            });
+            _showMessage(
+              'No valid OTP found. Please click \"Resend OTP\".',
+              isError: true,
+            );
+          }
+          // Regular invalid OTP
+          else {
+            _showMessage(
+              '$errorMsg. ${_maxAttempts - _incorrectAttempts} attempts remaining.',
+              isError: true,
+            );
+          }
         }
       }
     }
@@ -131,12 +210,18 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     if (!_canResend) return;
 
     final authProvider = context.read<AuthProvider>();
-    final success = await authProvider.resendOTP();
+    final success = await authProvider.resendOTP(
+      purpose: widget.isPasswordReset ? 'password_reset' : null,
+    );
 
     if (success && mounted) {
-      _showMessage('OTP sent successfully!', isError: false);
+      setState(() {
+        _incorrectAttempts = 0; // Reset attempt counter on successful resend
+        _isLocked = false; // Unlock verification
+      });
+
+      _showMessage('New OTP sent successfully!', isError: false);
       _startResendCountdown();
-      _incorrectAttempts = 0;
 
       // Clear OTP fields
       for (var controller in _otpControllers) {
@@ -144,7 +229,28 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       }
       _focusNodes[0].requestFocus();
     } else if (mounted) {
-      _showMessage('Failed to resend OTP', isError: true);
+      final errorMsg = authProvider.errorMessage ?? 'Failed to resend OTP';
+
+      // Handle already verified case
+      if (errorMsg.contains('already verified') ||
+          errorMsg.contains('Please login')) {
+        _showMessage(
+          'Your account is already verified. Redirecting to login...',
+          isError: false,
+        );
+
+        // Redirect to login after 2 seconds
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            Navigator.of(context).pushNamedAndRemoveUntil(
+              '/login',
+              (route) => false,
+            );
+          }
+        });
+      } else {
+        _showMessage(errorMsg, isError: true);
+      }
     }
   }
 
@@ -191,7 +297,9 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                'We have sent a verification code to',
+                widget.isPasswordReset
+                    ? 'We have sent a verification code to'
+                    : 'We have sent a verification code to',
                 style: Theme.of(context).textTheme.bodyMedium,
                 textAlign: TextAlign.center,
               ),
@@ -203,7 +311,36 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                     ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 8),
+              // Password reset info box
+              if (widget.isPasswordReset)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border:
+                        Border.all(color: AppColors.primary.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline,
+                          color: AppColors.primary, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'This OTP authorizes you to reset your password',
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: AppColors.primary,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 32),
               // OTP Input Fields
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -236,8 +373,33 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                 }),
               ),
               const SizedBox(height: 24),
+              // Locked State Warning
+              if (_isLocked)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.error.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.error),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.lock_outline, color: AppColors.error),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'OTP verification locked. Click "Resend OTP" to get a new code.',
+                          style: TextStyle(
+                            color: AppColors.error,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               // Attempt Counter
-              if (_incorrectAttempts > 0)
+              if (_incorrectAttempts > 0 && !_isLocked)
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -261,8 +423,13 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
               // Verify Button
               Consumer<AuthProvider>(
                 builder: (context, authProvider, _) {
+                  final isButtonEnabled = !authProvider.isLoading && !_isLocked;
+
                   return ElevatedButton(
-                    onPressed: authProvider.isLoading ? null : _handleVerifyOTP,
+                    onPressed: isButtonEnabled ? _handleVerifyOTP : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _isLocked ? Colors.grey : null,
+                    ),
                     child: authProvider.isLoading
                         ? const SizedBox(
                             height: 20,
@@ -273,7 +440,8 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                                   AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                           )
-                        : const Text('Verify OTP'),
+                        : Text(
+                            _isLocked ? 'Locked - Resend OTP' : 'Verify OTP'),
                   );
                 },
               ),

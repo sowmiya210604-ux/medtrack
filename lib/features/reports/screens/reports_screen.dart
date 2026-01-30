@@ -32,6 +32,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
     'Vitamins',
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    // Fetch reports when screen loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<ReportProvider>().fetchReports();
+    });
+  }
+
   final List<String> _reportTypes = [
     'All',
     'Complete Blood Count',
@@ -93,6 +102,41 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   );
                 }
 
+                // Show error message if fetch failed
+                if (reportProvider.errorMessage != null) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.error_outline,
+                          size: 64,
+                          color: AppColors.error,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Failed to load reports',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          reportProvider.errorMessage!,
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                        const SizedBox(height: 24),
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            reportProvider.fetchReports();
+                          },
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
                 final reports = reportProvider.reports;
 
                 if (reports.isEmpty) {
@@ -136,13 +180,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 // Group reports by month
                 final groupedReports = _groupReportsByMonth(filteredReports);
 
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: groupedReports.length,
-                  itemBuilder: (context, index) {
-                    final entry = groupedReports.entries.elementAt(index);
-                    return _buildReportGroup(entry.key, entry.value);
-                  },
+                return RefreshIndicator(
+                  onRefresh: () => reportProvider.fetchReports(),
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: groupedReports.length,
+                    itemBuilder: (context, index) {
+                      final entry = groupedReports.entries.elementAt(index);
+                      return _buildReportGroup(entry.key, entry.value);
+                    },
+                  ),
                 );
               },
             ),
