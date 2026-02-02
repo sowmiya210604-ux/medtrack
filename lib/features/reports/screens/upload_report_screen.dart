@@ -21,10 +21,55 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
   String? _extractedText;
   bool _isProcessing = false;
   bool _isImageClear = true;
+  bool _hasMedicalContent = false;
+  List<String> _detectedParameters = [];
 
   TestType? _selectedTestType;
   final _reportDateController = TextEditingController();
   final _labNameController = TextEditingController();
+
+  // Medical keywords for validation
+  static const List<String> _medicalKeywords = [
+    'hemoglobin',
+    'hb',
+    'hgb',
+    'glucose',
+    'sugar',
+    'cholesterol',
+    'rbc',
+    'wbc',
+    'platelet',
+    'creatinine',
+    'urea',
+    'bun',
+    'sgot',
+    'sgpt',
+    'bilirubin',
+    'albumin',
+    'globulin',
+    'tsh',
+    't3',
+    't4',
+    'thyroid',
+    'ldl',
+    'hdl',
+    'triglyceride',
+    'hba1c',
+    'test result',
+    'patient',
+    'lab',
+    'laboratory',
+    'medical',
+    'report',
+    'reference range',
+    'normal range',
+    'mg/dl',
+    'g/dl',
+    'mmol/l',
+    'u/l',
+    'cells/µl',
+    'million/µl'
+  ];
 
   final ImagePicker _picker = ImagePicker();
   TextRecognizer? _textRecognizer;
@@ -168,15 +213,56 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
         }
       }
 
+      final text = extractedText.toString();
       setState(() {
-        _extractedText = extractedText.toString();
+        _extractedText = text;
+        _validateMedicalContent(text);
       });
     } catch (e) {
       _showError('Failed to extract text: $e');
       setState(() {
         _extractedText = 'Failed to extract text from image';
+        _hasMedicalContent = false;
+        _detectedParameters = [];
       });
     }
+  }
+
+  void _validateMedicalContent(String text) {
+    if (text.isEmpty) {
+      _hasMedicalContent = false;
+      _detectedParameters = [];
+      return;
+    }
+
+    final lowerText = text.toLowerCase();
+
+    // Check for medical keywords
+    int keywordMatches = 0;
+    for (final keyword in _medicalKeywords) {
+      if (lowerText.contains(keyword)) {
+        keywordMatches++;
+      }
+    }
+
+    // Detect test parameters (format: Parameter: Value Unit)
+    final parameterPattern = RegExp(
+      r'(hemoglobin|hb|hgb|glucose|sugar|cholesterol|rbc|wbc|platelet|creatinine|urea|bun|sgot|sgpt|bilirubin|tsh|t3|t4|ldl|hdl|triglyceride|hba1c)\s*:?\s*([\d.]+)\s*(g/dl|mg/dl|mmol/l|u/l|%|cells/µl|million/µl)?',
+      caseSensitive: false,
+    );
+
+    final matches = parameterPattern.allMatches(lowerText);
+    _detectedParameters = matches.map((m) {
+      final param = m.group(1) ?? '';
+      final value = m.group(2) ?? '';
+      final unit = m.group(3) ?? '';
+      return '$param: $value $unit'.trim();
+    }).toList();
+
+    // Consider it medical content if:
+    // - At least 2 medical keywords found OR
+    // - At least 1 test parameter detected
+    _hasMedicalContent = keywordMatches >= 2 || _detectedParameters.isNotEmpty;
   }
 
   Future<void> _submitReport() async {
@@ -192,6 +278,12 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
 
     if (_reportDateController.text.isEmpty) {
       _showError('Please select report date');
+      return;
+    }
+
+    // Validate medical content (skip for web)
+    if (!kIsWeb && !_hasMedicalContent) {
+      await _showMedicalContentWarning();
       return;
     }
 
@@ -490,6 +582,82 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
     );
   }
 
+  Future<void> _showMedicalContentWarning() async {
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 28),
+            SizedBox(width: 12),
+            Expanded(child: Text('Not a Medical Report')),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'The selected image does not appear to contain medical report data.',
+              style: TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.primary),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Medical reports should contain:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                      '• Test parameter names (e.g., Hemoglobin, Glucose)'),
+                  const Text('• Numerical values with units (e.g., 14.5 g/dL)'),
+                  const Text('• Lab name or medical facility information'),
+                  const Text('• Patient or report identification'),
+                  const SizedBox(height: 12),
+                  if (_detectedParameters.isEmpty)
+                    const Text(
+                      'No test parameters were detected in this image.',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.error,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Please ensure you are uploading a clear image of a medical report.',
+              style: TextStyle(
+                fontSize: 14,
+                fontStyle: FontStyle.italic,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Select Different Image'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<bool> _showConfirmDialog(String title, String message) async {
     final result = await showDialog<bool>(
       context: context,
@@ -554,6 +722,14 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
               ),
 
               const SizedBox(height: 24),
+
+              // Medical Content Validation Status
+              if (_extractedText != null &&
+                  _extractedText!.isNotEmpty &&
+                  !kIsWeb)
+                _buildMedicalValidationStatus(),
+
+              const SizedBox(height: 16),
 
               // Extracted Text Preview
               if (_extractedText != null && _extractedText!.isNotEmpty)
@@ -750,6 +926,95 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
           });
         }
       },
+    );
+  }
+
+  Widget _buildMedicalValidationStatus() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _hasMedicalContent
+            ? AppColors.success.withOpacity(0.1)
+            : AppColors.error.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _hasMedicalContent ? AppColors.success : AppColors.error,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                _hasMedicalContent
+                    ? Icons.check_circle
+                    : Icons.warning_amber_rounded,
+                color: _hasMedicalContent ? AppColors.success : AppColors.error,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _hasMedicalContent
+                      ? 'Medical Report Detected'
+                      : 'No Medical Data Detected',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: _hasMedicalContent
+                        ? AppColors.success
+                        : AppColors.error,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_detectedParameters.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Detected Parameters (${_detectedParameters.length}):',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            ...(_detectedParameters.take(5).map(
+                  (param) => Padding(
+                    padding: const EdgeInsets.only(left: 16, bottom: 4),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check,
+                            size: 16, color: AppColors.success),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            param,
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )),
+            if (_detectedParameters.length > 5)
+              Padding(
+                padding: const EdgeInsets.only(left: 16, top: 4),
+                child: Text(
+                  '+ ${_detectedParameters.length - 5} more...',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+          ] else if (!_hasMedicalContent) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'This image does not appear to contain medical test results. Please upload a valid medical report.',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            ),
+          ],
+        ],
+      ),
     );
   }
 

@@ -48,17 +48,41 @@ class AuthProvider extends ChangeNotifier {
       final token = await StorageHelper.getToken();
 
       if (token != null && token.isNotEmpty) {
-        final userData = await StorageHelper.getUser();
-        if (userData != null) {
+        // Validate token by fetching profile from backend
+        try {
+          final userData = await AuthService.getProfile();
           _currentUser = User.fromJson(userData);
+          _isAuthenticated = true;
+        } catch (e) {
+          // Token is invalid or backend is unreachable
+          // Clear storage only if it's an auth error (401/403)
+          final errorMsg = e.toString().toLowerCase();
+          if (errorMsg.contains('unauthorized') ||
+              errorMsg.contains('invalid') ||
+              errorMsg.contains('expired')) {
+            await StorageHelper.clearAll();
+            _isAuthenticated = false;
+            _currentUser = null;
+          } else {
+            // Backend might be offline, keep user logged in with cached data
+            final userData = await StorageHelper.getUser();
+            if (userData != null) {
+              _currentUser = User.fromJson(userData);
+              _isAuthenticated = true;
+            } else {
+              // No cached data available
+              await StorageHelper.clearAll();
+              _isAuthenticated = false;
+            }
+          }
         }
-        _isAuthenticated = true;
       } else {
         _isAuthenticated = false;
       }
     } catch (e) {
       _errorMessage = 'Failed to initialize authentication';
       _isAuthenticated = false;
+      await StorageHelper.clearAll();
     } finally {
       _isLoading = false;
       notifyListeners();

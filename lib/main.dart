@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'core/theme/app_theme.dart';
 import 'core/middleware/auth_guard.dart';
 import 'features/auth/providers/auth_provider.dart';
@@ -13,7 +14,10 @@ import 'features/auth/screens/success_screen.dart';
 import 'features/main/screens/main_screen.dart';
 import 'test_connection.dart';
 
-void main() {
+void main() async {
+  // Load environment variables
+  await dotenv.load(fileName: ".env");
+
   runApp(const MedTrackApp());
 }
 

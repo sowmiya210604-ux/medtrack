@@ -1,11 +1,47 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/services/health_summary_service.dart';
 
-class HealthSummaryCard extends StatelessWidget {
+class HealthSummaryCard extends StatefulWidget {
   final List<String> healthConditions;
 
   const HealthSummaryCard({Key? key, this.healthConditions = const []})
       : super(key: key);
+
+  @override
+  State<HealthSummaryCard> createState() => _HealthSummaryCardState();
+}
+
+class _HealthSummaryCardState extends State<HealthSummaryCard> {
+  Map<String, dynamic>? _latestSummary;
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHealthSummary();
+  }
+
+  Future<void> _loadHealthSummary() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final summary = await HealthSummaryService.getLatestSummary();
+      setState(() {
+        _latestSummary = summary;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,53 +63,151 @@ class HealthSummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Your Health Overview',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w600,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Your Health Summary',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+              if (!_isLoading)
+                IconButton(
+                  icon: const Icon(Icons.refresh, size: 20),
+                  onPressed: _loadHealthSummary,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
                 ),
+            ],
           ),
           const SizedBox(height: 16),
-          if (healthConditions.isEmpty)
+          if (_isLoading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(16.0),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (_error != null)
             Text(
-              'No health conditions detected yet. Upload your medical reports to get personalized health insights.',
+              'Unable to load health summary',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: AppColors.textSecondary,
                   ),
-            ),
-          if (healthConditions.isNotEmpty) ...[
+            )
+          else if (_latestSummary == null)
             Text(
-              'Health Conditions:',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
+              'No health summary available yet. Upload your medical reports to get personalized health insights.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppColors.textSecondary,
                   ),
-            ),
-            const SizedBox(height: 8),
-            ...healthConditions.map(
-              (condition) => Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                        color: Colors.black,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      condition,
-                      style: Theme.of(context).textTheme.bodyLarge,
-                    ),
-                  ],
+            )
+          else ...[
+            // Overall Status Badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: _getStatusColor(_latestSummary!['overallStatus'])
+                    .withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: _getStatusColor(_latestSummary!['overallStatus']),
+                  width: 1,
                 ),
               ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _getStatusIcon(_latestSummary!['overallStatus']),
+                    size: 16,
+                    color: _getStatusColor(_latestSummary!['overallStatus']),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    _latestSummary!['overallStatus'],
+                    style: TextStyle(
+                      color: _getStatusColor(_latestSummary!['overallStatus']),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Risk Level
+            Row(
+              children: [
+                const Icon(Icons.warning_amber_rounded,
+                    size: 18, color: Colors.orange),
+                const SizedBox(width: 8),
+                Text(
+                  'Risk Level: ${_latestSummary!['riskLevel']}',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w500,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+
+            // Abnormal Count
+            if (_latestSummary!['abnormalCount'] > 0)
+              Row(
+                children: [
+                  const Icon(Icons.info_outline,
+                      size: 18, color: AppColors.error),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${_latestSummary!['abnormalCount']} abnormal result(s) detected',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppColors.error,
+                        ),
+                  ),
+                ],
+              ),
+            const SizedBox(height: 16),
+
+            // Summary Text
+            Text(
+              _latestSummary!['summaryText']?.split('\n').first ?? '',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppColors.textPrimary,
+                    height: 1.5,
+                  ),
             ),
           ],
         ],
       ),
     );
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status.toUpperCase()) {
+      case 'NORMAL':
+        return Colors.green;
+      case 'CAUTION':
+        return Colors.orange;
+      case 'CRITICAL':
+        return AppColors.error;
+      default:
+        return AppColors.textSecondary;
+    }
+  }
+
+  IconData _getStatusIcon(String status) {
+    switch (status.toUpperCase()) {
+      case 'NORMAL':
+        return Icons.check_circle;
+      case 'CAUTION':
+        return Icons.warning;
+      case 'CRITICAL':
+        return Icons.error;
+      default:
+        return Icons.info;
+    }
   }
 }

@@ -71,7 +71,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final cleanedPhone = _phoneController.text.replaceAll(RegExp(r'\D'), '');
 
       final authProvider = context.read<AuthProvider>();
-      
+
       // Check if phone is blocked before attempting login
       if (authProvider.isPhoneBlocked(cleanedPhone)) {
         _showBlockedDialog(cleanedPhone);
@@ -87,7 +87,7 @@ class _LoginScreenState extends State<LoginScreen> {
         Navigator.of(context).pushReplacementNamed('/home');
       } else if (mounted) {
         final errorMessage = authProvider.errorMessage ?? 'Login failed';
-        
+
         // Check if account is now blocked
         if (authProvider.isPhoneBlocked(cleanedPhone)) {
           _showBlockedDialog(cleanedPhone);
@@ -108,12 +108,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       label: 'Verify',
                       textColor: Colors.white,
                       onPressed: () {
-                        Navigator.of(context).pushNamed('/otp-verification',
-                            arguments: {
-                              'email': '',
-                              'phone': cleanedPhone,
-                              'isPasswordReset': false,
-                            });
+                        Navigator.of(context)
+                            .pushNamed('/otp-verification', arguments: {
+                          'email': '',
+                          'phone': cleanedPhone,
+                          'isPasswordReset': false,
+                        });
                       },
                     )
                   : null,
@@ -150,7 +150,9 @@ class _LoginScreenState extends State<LoginScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: remaining <= 2 ? AppColors.error.withOpacity(0.1) : AppColors.warning.withOpacity(0.1),
+                color: remaining <= 2
+                    ? AppColors.error.withOpacity(0.1)
+                    : AppColors.warning.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
                   color: remaining <= 2 ? AppColors.error : AppColors.warning,
@@ -168,7 +170,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       '$remaining attempt${remaining == 1 ? '' : 's'} remaining',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: remaining <= 2 ? AppColors.error : AppColors.warning,
+                        color: remaining <= 2
+                            ? AppColors.error
+                            : AppColors.warning,
                       ),
                     ),
                   ),
@@ -336,6 +340,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextFormField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
+                  onChanged: (value) {
+                    setState(() {}); // Trigger rebuild to update button state
+                  },
                   decoration: InputDecoration(
                     labelText: 'Password',
                     hintText: 'Enter your password',
@@ -378,8 +385,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Login Button
                 Consumer<AuthProvider>(
                   builder: (context, authProvider, _) {
-                    final cleanedPhone = _phoneController.text.replaceAll(RegExp(r'\D'), '');
-                    final isBlocked = cleanedPhone.length == 10 && authProvider.isPhoneBlocked(cleanedPhone);
+                    final cleanedPhone =
+                        _phoneController.text.replaceAll(RegExp(r'\D'), '');
+                    final isBlocked = cleanedPhone.length == 10 &&
+                        authProvider.isPhoneBlocked(cleanedPhone);
                     final isButtonEnabled = !authProvider.isLoading &&
                         !isBlocked &&
                         _isPhoneValid &&
@@ -398,7 +407,8 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             child: Row(
                               children: [
-                                const Icon(Icons.lock_outline, color: AppColors.error),
+                                const Icon(Icons.lock_outline,
+                                    color: AppColors.error),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
@@ -414,9 +424,13 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ],
                         ElevatedButton(
-                          onPressed: isBlocked ? null : (isButtonEnabled ? _handleLogin : null),
+                          onPressed: isBlocked
+                              ? null
+                              : (isButtonEnabled ? _handleLogin : null),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: isBlocked ? Colors.grey : (isButtonEnabled ? null : Colors.grey),
+                            backgroundColor: isBlocked
+                                ? Colors.grey
+                                : (isButtonEnabled ? null : Colors.grey),
                           ),
                           child: authProvider.isLoading
                               ? const SizedBox(
@@ -424,8 +438,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                   width: 20,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    valueColor:
-                                        AlwaysStoppedAnimation<Color>(Colors.white),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white),
                                   ),
                                 )
                               : Text(isBlocked ? 'Account Locked' : 'Login'),

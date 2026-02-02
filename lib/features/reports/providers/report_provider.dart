@@ -177,13 +177,20 @@ class ReportProvider extends ChangeNotifier {
           final status =
               _determineStatus(parameterName, double.tryParse(value) ?? 0);
 
+          final normalRanges = _getNormalRange(parameterName);
+
           results.add({
             'testName': parameterName,
+            'testCategory':
+                parameterName, // Use parameter name as category for now
+            'testSubCategory': parameterName,
             'parameterName': parameterName,
             'value': value,
             'unit': unit,
             'status': status,
             'referenceRange': _getReferenceRange(parameterName),
+            'normalMin': normalRanges['min'],
+            'normalMax': normalRanges['max'],
           });
         }
       }
@@ -228,6 +235,32 @@ class ReportProvider extends ChangeNotifier {
     }
 
     return null;
+  }
+
+  Map<String, double?> _getNormalRange(String parameter) {
+    final param = parameter.toLowerCase();
+
+    if (param.contains('hemoglobin') ||
+        param.contains('hb') ||
+        param.contains('hgb')) {
+      return {'min': 12.0, 'max': 16.0};
+    } else if (param.contains('glucose') || param.contains('sugar')) {
+      return {'min': 70.0, 'max': 100.0};
+    } else if (param.contains('cholesterol')) {
+      return {'min': null, 'max': 200.0};
+    } else if (param.contains('rbc')) {
+      return {'min': 4.5, 'max': 5.5};
+    } else if (param.contains('wbc')) {
+      return {'min': 4000.0, 'max': 11000.0};
+    } else if (param.contains('platelets') || param.contains('plt')) {
+      return {'min': 150.0, 'max': 400.0};
+    } else if (param.contains('creatinine')) {
+      return {'min': 0.6, 'max': 1.2};
+    } else if (param.contains('urea') || param.contains('bun')) {
+      return {'min': 7.0, 'max': 20.0};
+    }
+
+    return {'min': null, 'max': null};
   }
 
   // Get reports by test type

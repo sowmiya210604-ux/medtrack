@@ -10,6 +10,7 @@ import '../../../core/theme/app_colors.dart';
 import '../models/report_model.dart';
 import '../providers/report_provider.dart';
 import '../../insights/screens/test_history_screen.dart';
+import '../../../core/services/test_history_service.dart';
 
 class ReportDetailScreen extends StatefulWidget {
   final MedicalReport report;
@@ -25,6 +26,8 @@ class ReportDetailScreen extends StatefulWidget {
 
 class _ReportDetailScreenState extends State<ReportDetailScreen> {
   List<TestResult> _testHistory = [];
+  bool _isLoadingHistory = false;
+  String? _historyError;
 
   @override
   void initState() {
@@ -32,12 +35,55 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
     _loadTestHistory();
   }
 
-  void _loadTestHistory() {
-    final reportProvider = context.read<ReportProvider>();
+  Future<void> _loadTestHistory() async {
     setState(() {
-      _testHistory =
-          reportProvider.getTestResultsByName(widget.report.testName);
+      _isLoadingHistory = true;
+      _historyError = null;
     });
+
+    try {
+      // Fetch test history from backend API
+      final historyData = await TestHistoryService.getTestHistory(
+        testName: widget.report.testName,
+      );
+
+      // Convert to TestResult objects
+      final testResults = historyData.map((data) {
+        return TestResult(
+          id: data['id'] ?? '',
+          reportId: widget.report.id,
+          testName: widget.report.testName,
+          parameterName: data['parameterName'] ?? '',
+          value: (data['value'] as num?)?.toDouble() ?? 0.0,
+          unit: data['unit'] ?? '',
+          normalMin: (data['normalMin'] as num?)?.toDouble(),
+          normalMax: (data['normalMax'] as num?)?.toDouble(),
+          status: _parseStatus(data['status']),
+          testDate: DateTime.parse(data['testDate']),
+        );
+      }).toList();
+
+      setState(() {
+        _testHistory = testResults;
+        _isLoadingHistory = false;
+      });
+    } catch (e) {
+      setState(() {
+        _historyError = 'Failed to load test history: $e';
+        _isLoadingHistory = false;
+      });
+    }
+  }
+
+  TestStatus _parseStatus(String? status) {
+    switch (status?.toUpperCase()) {
+      case 'HIGH':
+        return TestStatus.high;
+      case 'LOW':
+        return TestStatus.low;
+      default:
+        return TestStatus.normal;
+    }
   }
 
   Future<void> _shareReport() async {
@@ -178,29 +224,103 @@ Test Results:
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Report Header
-            _buildHeader(context),
-            const SizedBox(height: 24),
+      body: _isLoadingHistory
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Loading test history...'),
+                ],
+              ),
+            )
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Report Header
+                  _buildHeader(context),
+                  const SizedBox(height: 24),
 
-            // Test Results Graph (if available)
-            if (_testHistory.isNotEmpty) ...[
-              _buildResultsGraph(context),
-              const SizedBox(height: 24),
-            ],
+                  // Error message if history failed to load
+                  if (_historyError != null) ...[
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.error.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.error),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.error_outline,
+                              color: AppColors.error),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              _historyError!,
+                              style: const TextStyle(color: AppColors.error),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
 
-            // Test Results Table (if available)
-            if (_testHistory.isNotEmpty) ...[
-              _buildResultsTable(context),
-              const SizedBox(height: 24),
-            ],
-          ],
-        ),
-      ),
+                  // Test Results Graph (if available)
+                  if (_testHistory.isNotEmpty) ...[
+                    _buildResultsGraph(context),
+                    const SizedBox(height: 24),
+                  ],
+
+                  // Test Results Table (if available)
+                  if (_testHistory.isNotEmpty) ...[
+                    _buildResultsTable(context),
+                    const SizedBox(height: 24),
+                  ],
+
+                  // No data message
+                  if (_testHistory.isEmpty && _historyError == null) ...[
+                    Container(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.history,
+                            size: 64,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No test history found',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(
+                                  color: Colors.grey[600],
+                                ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Upload more reports to see trends and history',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  color: Colors.grey[500],
+                                ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
     );
   }
 
@@ -571,14 +691,14 @@ Test Results:
   }
 
   Widget _buildResultsTable(BuildContext context) {
-    // Get recent test results (limit to 5 most recent)
+    // Get recent test results (limit to 3 most recent)
     final recentResults = _testHistory
         .where((r) => r.testDate
             .isBefore(widget.report.reportDate.add(const Duration(days: 1))))
         .toList()
       ..sort((a, b) => b.testDate.compareTo(a.testDate));
 
-    final displayResults = recentResults.take(5).toList();
+    final displayResults = recentResults.take(3).toList();
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -725,10 +845,10 @@ Test Results:
               }).toList(),
             ),
           ),
-          if (recentResults.length > 5) ...[
+          if (recentResults.length > 3) ...[
             const SizedBox(height: 12),
             Center(
-              child: TextButton(
+              child: TextButton.icon(
                 onPressed: () {
                   // Navigate with first parameter's results
                   Map<String, List<TestResult>> groupedResults = {};
@@ -749,7 +869,11 @@ Test Results:
                     ),
                   );
                 },
-                child: const Text('View All Results'),
+                icon: const Icon(Icons.arrow_forward, size: 18),
+                label: const Text('View Full History'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                ),
               ),
             ),
           ],
