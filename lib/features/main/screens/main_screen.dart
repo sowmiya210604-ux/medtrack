@@ -6,28 +6,65 @@ import '../../profile/screens/profile_screen.dart';
 import '../../../core/theme/app_colors.dart';
 
 class MainScreen extends StatefulWidget {
-  const MainScreen({Key? key}) : super(key: key);
+  final int initialIndex;
+
+  const MainScreen({
+    Key? key,
+    this.initialIndex = 0,
+  }) : super(key: key);
 
   @override
-  State<MainScreen> createState() => _MainScreenState();
+  State<MainScreen> createState() => MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
-  int _currentIndex = 0;
+class MainScreenState extends State<MainScreen> {
+  late int _currentIndex;
 
-  final List<Widget> _screens = const [
-    HomeScreen(),
-    ReportsScreen(),
-    InsightsScreen(),
-    ProfileScreen(),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+  }
+
+  void switchToTab(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
+  }
+
+  List<Widget> get _screens => [
+        HomeScreen(
+          onNavigateToReports: () => switchToTab(1),
+          onNavigateToProfile: () => switchToTab(3),
+        ),
+        const ReportsScreen(),
+        const InsightsScreen(),
+        const ProfileScreen(),
+      ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        transitionBuilder: (Widget child, Animation<double> animation) {
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0.05, 0),
+                end: Offset.zero,
+              ).animate(
+                CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeOutCubic,
+                ),
+              ),
+              child: child,
+            ),
+          );
+        },
+        child: _screens[_currentIndex],
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(

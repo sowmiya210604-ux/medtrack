@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'core/theme/app_theme.dart';
+import 'core/middleware/auth_guard.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/reports/providers/report_provider.dart';
 import 'features/auth/screens/login_screen.dart';
@@ -10,8 +12,12 @@ import 'features/auth/screens/forgot_password_screen.dart';
 import 'features/auth/screens/reset_password_screen.dart';
 import 'features/auth/screens/success_screen.dart';
 import 'features/main/screens/main_screen.dart';
+import 'test_connection.dart';
 
-void main() {
+void main() async {
+  // Load environment variables
+  await dotenv.load(fileName: ".env");
+
   runApp(const MedTrackApp());
 }
 
@@ -88,7 +94,12 @@ class MedTrackApp extends StatelessWidget {
               );
 
             case '/home':
-              return MaterialPageRoute(builder: (_) => const MainScreen());
+              return createProtectedRoute(const MainScreen(), settings);
+
+            case '/test-connection':
+              return MaterialPageRoute(
+                builder: (_) => const ConnectionTestScreen(),
+              );
 
             default:
               return MaterialPageRoute(

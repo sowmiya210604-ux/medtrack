@@ -25,6 +25,15 @@ class _InsightsScreenState extends State<InsightsScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    // Fetch reports when screen loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<ReportProvider>().fetchReports();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,

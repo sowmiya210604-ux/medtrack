@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_logo.dart';
@@ -16,6 +17,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  String? _phoneError;
 
   @override
   void dispose() {
@@ -24,25 +26,280 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  String? _validatePhoneNumber(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Please enter your mobile number';
+    }
+
+    // Remove any whitespace or special characters
+    final cleaned = value.replaceAll(RegExp(r'\D'), '');
+
+    if (cleaned.length != 10) {
+      return 'Phone number must be exactly 10 digits';
+    }
+
+    return null;
+  }
+
+  bool get _isPhoneValid {
+    final value = _phoneController.text;
+    if (value.isEmpty) return false;
+    final cleaned = value.replaceAll(RegExp(r'\D'), '');
+    return cleaned.length == 10;
+  }
+
+  void _onPhoneChanged(String value) {
+    setState(() {
+      _phoneError = _validatePhoneNumber(value);
+    });
+  }
+
   Future<void> _handleLogin() async {
     if (_formKey.currentState!.validate()) {
+      // Additional phone validation check
+      if (!_isPhoneValid) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please enter a valid 10-digit phone number'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+        return;
+      }
+
+      // Clean phone number (remove any non-digit characters)
+      final cleanedPhone = _phoneController.text.replaceAll(RegExp(r'\D'), '');
+
       final authProvider = context.read<AuthProvider>();
+
+      // Check if phone is blocked before attempting login
+      if (authProvider.isPhoneBlocked(cleanedPhone)) {
+        _showBlockedDialog(cleanedPhone);
+        return;
+      }
+
       final success = await authProvider.login(
-        _phoneController.text,
+        cleanedPhone,
         _passwordController.text,
       );
 
       if (success && mounted) {
         Navigator.of(context).pushReplacementNamed('/home');
       } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(authProvider.errorMessage ?? 'Login failed'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        final errorMessage = authProvider.errorMessage ?? 'Login failed';
+
+        // Check if account is now blocked
+        if (authProvider.isPhoneBlocked(cleanedPhone)) {
+          _showBlockedDialog(cleanedPhone);
+        } else if (errorMessage.toLowerCase().contains('invalid credentials') ||
+            errorMessage.toLowerCase().contains('incorrect password') ||
+            errorMessage.toLowerCase().contains('password')) {
+          // Show remaining attempts
+          final remaining = authProvider.getRemainingAttempts(cleanedPhone);
+          _showIncorrectPasswordDialog(errorMessage, remaining);
+        } else {
+          // Show snackbar for other errors
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMessage),
+              backgroundColor: AppColors.error,
+              action: errorMessage.toLowerCase().contains('not verified')
+                  ? SnackBarAction(
+                      label: 'Verify',
+                      textColor: Colors.white,
+                      onPressed: () {
+                        Navigator.of(context)
+                            .pushNamed('/otp-verification', arguments: {
+                          'email': '',
+                          'phone': cleanedPhone,
+                          'isPasswordReset': false,
+                        });
+                      },
+                    )
+                  : null,
+            ),
+          );
+        }
       }
     }
+  }
+
+  void _showIncorrectPasswordDialog(String message, int remaining) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.error_outline, color: AppColors.error, size: 28),
+            SizedBox(width: 12),
+            Text('Incorrect Password'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'The password you entered is incorrect.',
+              style: TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: remaining <= 2
+                    ? AppColors.error.withOpacity(0.1)
+                    : AppColors.warning.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: remaining <= 2 ? AppColors.error : AppColors.warning,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    color: remaining <= 2 ? AppColors.error : AppColors.warning,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '$remaining attempt${remaining == 1 ? '' : 's'} remaining',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: remaining <= 2
+                            ? AppColors.error
+                            : AppColors.warning,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (remaining <= 2) ...[
+              const SizedBox(height: 8),
+              const Text(
+                'Your account will be locked after all attempts are used.',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Try Again'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pushNamed('/forgot-password');
+            },
+            child: const Text('Reset Password'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showBlockedDialog(String phone) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.lock_outline, color: AppColors.error, size: 28),
+            SizedBox(width: 12),
+            Text('Account Locked'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Your account has been temporarily locked due to too many failed login attempts.',
+              style: TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.primary),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'To unlock your account:',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    '1. Click "Reset Password" below',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  Text(
+                    '2. Enter your registered email',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  Text(
+                    '3. Verify the OTP sent to your email',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  Text(
+                    '4. Set a new password',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  Text(
+                    '5. Login with your new password',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'The OTP will authorize you to change your password.',
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pushNamed('/forgot-password');
+            },
+            icon: const Icon(Icons.lock_reset),
+            label: const Text('Reset Password'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -63,27 +320,29 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Mobile Number Field
                 TextFormField(
                   controller: _phoneController,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
+                  keyboardType: TextInputType.number,
+                  maxLength: 10,
+                  onChanged: _onPhoneChanged,
+                  decoration: InputDecoration(
                     labelText: 'Mobile Number',
-                    hintText: 'Enter your mobile number',
-                    prefixIcon: Icon(Icons.phone_outlined),
+                    hintText: 'Enter 10-digit mobile number',
+                    prefixIcon: const Icon(Icons.phone_outlined),
+                    counterText: '', // Hide character counter
+                    errorText: _phoneError,
                   ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your mobile number';
-                    }
-                    if (value.length < 10) {
-                      return 'Please enter a valid mobile number';
-                    }
-                    return null;
-                  },
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                  ],
+                  validator: _validatePhoneNumber,
                 ),
                 const SizedBox(height: 16),
                 // Password Field
                 TextFormField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
+                  onChanged: (value) {
+                    setState(() {}); // Trigger rebuild to update button state
+                  },
                   decoration: InputDecoration(
                     labelText: 'Password',
                     hintText: 'Enter your password',
@@ -126,19 +385,66 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Login Button
                 Consumer<AuthProvider>(
                   builder: (context, authProvider, _) {
-                    return ElevatedButton(
-                      onPressed: authProvider.isLoading ? null : _handleLogin,
-                      child: authProvider.isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor:
-                                    AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : const Text('Login'),
+                    final cleanedPhone =
+                        _phoneController.text.replaceAll(RegExp(r'\D'), '');
+                    final isBlocked = cleanedPhone.length == 10 &&
+                        authProvider.isPhoneBlocked(cleanedPhone);
+                    final isButtonEnabled = !authProvider.isLoading &&
+                        !isBlocked &&
+                        _isPhoneValid &&
+                        _passwordController.text.length >= 6;
+
+                    return Column(
+                      children: [
+                        if (isBlocked) ...[
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            margin: const EdgeInsets.only(bottom: 16),
+                            decoration: BoxDecoration(
+                              color: AppColors.error.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: AppColors.error),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.lock_outline,
+                                    color: AppColors.error),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'Account locked. Please reset your password.',
+                                    style: TextStyle(
+                                      color: AppColors.error,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        ElevatedButton(
+                          onPressed: isBlocked
+                              ? null
+                              : (isButtonEnabled ? _handleLogin : null),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: isBlocked
+                                ? Colors.grey
+                                : (isButtonEnabled ? null : Colors.grey),
+                          ),
+                          child: authProvider.isLoading
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white),
+                                  ),
+                                )
+                              : Text(isBlocked ? 'Account Locked' : 'Login'),
+                        ),
+                      ],
                     );
                   },
                 ),
@@ -158,6 +464,18 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: const Text('Register'),
                     ),
                   ],
+                ),
+                const SizedBox(height: 16),
+                // Test Connection Button (Debug)
+                TextButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).pushNamed('/test-connection');
+                  },
+                  icon: const Icon(Icons.wifi_find, size: 18),
+                  label: const Text('Test Backend Connection'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.grey,
+                  ),
                 ),
               ],
             ),

@@ -1,235 +1,396 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../core/services/auth_service.dart';
+import '../../../core/utils/storage_helper.dart';
 import '../models/user_model.dart';
 
 class AuthProvider extends ChangeNotifier {
   User? _currentUser;
   bool _isAuthenticated = false;
-  bool _isLoading = false;
+  bool _isLoading = true;
   String? _errorMessage;
+
+  // Login attempt tracking
+  final Map<String, int> _loginAttempts = {};
+  final Map<String, DateTime> _blockExpiry = {};
+  static const int _maxAttempts = 5;
+  String? _blockedPhone;
 
   User? get currentUser => _currentUser;
   bool get isAuthenticated => _isAuthenticated;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+  String? get blockedPhone => _blockedPhone;
 
-  // Initialize auth state from stored data
+  int getLoginAttempts(String phone) => _loginAttempts[phone] ?? 0;
+  int getRemainingAttempts(String phone) =>
+      _maxAttempts - getLoginAttempts(phone);
+  bool isPhoneBlocked(String phone) {
+    final expiry = _blockExpiry[phone];
+    if (expiry != null && DateTime.now().isBefore(expiry)) {
+      return true;
+    }
+    // Clear expired block
+    if (expiry != null && DateTime.now().isAfter(expiry)) {
+      _blockExpiry.remove(phone);
+      _loginAttempts.remove(phone);
+      _blockedPhone = null;
+    }
+    return false;
+  }
+
+  /// 🔹 Initialize auth state (APP START)
   Future<void> initialize() async {
-    _isLoading = true;
-    notifyListeners();
-
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
+      _isLoading = true;
+      notifyListeners();
 
-      if (token != null) {
-        // TODO: Validate token with backend API
-        // For now, we'll simulate it with stored user data
-        final userJson = prefs.getString('user_data');
-        if (userJson != null) {
-          // In real app, parse the JSON
+      final token = await StorageHelper.getToken();
+
+      if (token != null && token.isNotEmpty) {
+        // Validate token by fetching profile from backend
+        try {
+          final userData = await AuthService.getProfile();
+          _currentUser = User.fromJson(userData);
           _isAuthenticated = true;
-          _currentUser = User(
-            id: '1',
-            name: prefs.getString('user_name') ?? 'User',
-            email: prefs.getString('user_email') ?? '',
-            phone: prefs.getString('user_phone') ?? '',
-            profileImage: prefs.getString('user_profile_image'),
-          );
+        } catch (e) {
+          // Token is invalid or backend is unreachable
+          // Clear storage only if it's an auth error (401/403)
+          final errorMsg = e.toString().toLowerCase();
+          if (errorMsg.contains('unauthorized') ||
+              errorMsg.contains('invalid') ||
+              errorMsg.contains('expired')) {
+            await StorageHelper.clearAll();
+            _isAuthenticated = false;
+            _currentUser = null;
+          } else {
+            // Backend might be offline, keep user logged in with cached data
+            final userData = await StorageHelper.getUser();
+            if (userData != null) {
+              _currentUser = User.fromJson(userData);
+              _isAuthenticated = true;
+            } else {
+              // No cached data available
+              await StorageHelper.clearAll();
+              _isAuthenticated = false;
+            }
+          }
         }
+      } else {
+        _isAuthenticated = false;
       }
     } catch (e) {
-      _errorMessage = 'Failed to initialize auth: $e';
+      _errorMessage = 'Failed to initialize authentication';
+      _isAuthenticated = false;
+      await StorageHelper.clearAll();
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  // Login
+  /// 🔹 LOGIN
   Future<bool> login(String phone, String password) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
     try {
-      // TODO: Call backend API
-      // Simulating API call
-      await Future.delayed(const Duration(seconds: 2));
+      _isLoading = true;
+      _errorMessage = null;
+      notifyListeners();
 
-      // Mock successful login - retrieve stored name from registration
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-          'auth_token', 'mock_token_${DateTime.now().millisecondsSinceEpoch}');
-      await prefs.setString('user_phone', phone);
+      // Check if phone is blocked
+      if (isPhoneBlocked(phone)) {
+        _errorMessage = 'Too many failed attempts. Please reset your password.';
+        _blockedPhone = phone;
+        return false;
+      }
 
-      // Get stored name from registration, default if not found
-      final storedName = prefs.getString('user_name') ?? 'User';
-      final storedEmail = prefs.getString('user_email') ?? '';
-      final storedProfileImage = prefs.getString('user_profile_image');
+      // Call backend API to login
+      final userData = await AuthService.login(phone, password);
 
-      _currentUser = User(
-        id: '1',
-        name: storedName,
-        email: storedEmail,
-        phone: phone,
-        profileImage: storedProfileImage,
-      );
+      // Clear attempts on successful login
+      _loginAttempts.remove(phone);
+      _blockExpiry.remove(phone);
+      _blockedPhone = null;
+
+      // Set user data and authentication state
+      _currentUser = User.fromJson(userData);
       _isAuthenticated = true;
-      _isLoading = false;
-      notifyListeners();
+
       return true;
     } catch (e) {
-      _errorMessage = 'Login failed: $e';
+      final errorMsg = e.toString().replaceAll('Exception: ', '');
+      _errorMessage = errorMsg;
+      _isAuthenticated = false;
+
+      // Track failed attempts for incorrect password errors
+      if (errorMsg.toLowerCase().contains('invalid credentials') ||
+          errorMsg.toLowerCase().contains('incorrect') ||
+          errorMsg.toLowerCase().contains('password')) {
+        _loginAttempts[phone] = (_loginAttempts[phone] ?? 0) + 1;
+
+        if (_loginAttempts[phone]! >= _maxAttempts) {
+          // Block the phone number for 30 minutes
+          _blockExpiry[phone] = DateTime.now().add(const Duration(minutes: 30));
+          _blockedPhone = phone;
+          _errorMessage =
+              'Account locked due to too many failed attempts. Please reset your password.';
+        } else {
+          final remaining = _maxAttempts - _loginAttempts[phone]!;
+          _errorMessage = '$errorMsg. $remaining attempts remaining.';
+        }
+      }
+
+      return false;
+    } finally {
       _isLoading = false;
       notifyListeners();
-      return false;
     }
   }
 
-  // Register
+  /// 🔹 REGISTER
   Future<bool> register(
-      String name, String email, String phone, String password) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
+    String name,
+    String email,
+    String phone,
+    String password,
+  ) async {
     try {
-      // TODO: Call backend API
-      await Future.delayed(const Duration(seconds: 2));
-
-      // Store user details for login
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('user_name', name);
-      await prefs.setString('user_email', email);
-      await prefs.setString('user_phone', phone);
-
-      _isLoading = false;
+      _isLoading = true;
+      _errorMessage = null;
       notifyListeners();
+
+      // Call backend API to register user with phone number
+      await AuthService.register(name, email, phone, password);
+
       return true;
     } catch (e) {
-      _errorMessage = 'Registration failed: $e';
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      return false;
+    } finally {
       _isLoading = false;
       notifyListeners();
-      return false;
     }
   }
 
-  // Verify OTP
+  /// 🔹 OTP VERIFY
   Future<bool> verifyOTP(String otp) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
     try {
-      // TODO: Call backend API
-      await Future.delayed(const Duration(seconds: 1));
-
-      _isLoading = false;
+      _isLoading = true;
+      _errorMessage = null;
       notifyListeners();
+
+      // Get pending email from storage
+      final email = await StorageHelper.getPendingEmail();
+
+      if (email == null) {
+        _errorMessage = 'No pending verification found';
+        return false;
+      }
+
+      // Call backend API to verify OTP (this saves token and user)
+      await AuthService.verifyOtp(email, otp);
+
+      // Load user data from storage
+      final userData = await StorageHelper.getUser();
+
+      if (userData != null) {
+        _currentUser = User.fromJson(userData);
+        _isAuthenticated = true;
+      }
+
       return true;
     } catch (e) {
-      _errorMessage = 'OTP verification failed: $e';
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      return false;
+    } finally {
       _isLoading = false;
       notifyListeners();
-      return false;
     }
   }
 
-  // Resend OTP
-  Future<bool> resendOTP() async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
+  /// 🔹 VERIFY PASSWORD RESET OTP
+  Future<bool> verifyPasswordResetOTP(String otp) async {
     try {
-      // TODO: Call backend API
-      await Future.delayed(const Duration(seconds: 1));
-
-      _isLoading = false;
+      _isLoading = true;
+      _errorMessage = null;
       notifyListeners();
+
+      // Get pending email from storage
+      final email = await StorageHelper.getPendingEmail();
+
+      if (email == null) {
+        _errorMessage = 'No pending verification found';
+        return false;
+      }
+
+      // Verify OTP for password reset (doesn't log in user)
+      await AuthService.verifyPasswordResetOtp(email, otp);
+
+      // Store OTP for use in reset password step
+      await StorageHelper.savePendingOtp(otp);
+
       return true;
     } catch (e) {
-      _errorMessage = 'Failed to resend OTP: $e';
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      return false;
+    } finally {
       _isLoading = false;
       notifyListeners();
-      return false;
     }
   }
 
-  // Forgot Password
+  /// 🔹 RESEND OTP
+  Future<bool> resendOTP({String? purpose}) async {
+    try {
+      _isLoading = true;
+      _errorMessage = null;
+      notifyListeners();
+
+      // Get pending email from storage
+      final email = await StorageHelper.getPendingEmail();
+
+      if (email == null || email.isEmpty) {
+        _errorMessage = 'No pending verification found';
+        return false;
+      }
+
+      // Call backend to resend OTP with optional purpose
+      await AuthService.resendOtp(email, purpose: purpose);
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// 🔹 FORGOT PASSWORD
   Future<bool> forgotPassword(String email) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
     try {
-      // TODO: Call backend API
-      await Future.delayed(const Duration(seconds: 1));
-
-      _isLoading = false;
+      _isLoading = true;
+      _errorMessage = null;
       notifyListeners();
+
+      // Call backend to send OTP for password reset
+      await AuthService.forgotPassword(email);
       return true;
     } catch (e) {
-      _errorMessage = 'Failed to send reset link: $e';
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      return false;
+    } finally {
       _isLoading = false;
       notifyListeners();
-      return false;
     }
   }
 
-  // Reset Password
-  Future<bool> resetPassword(String newPassword, String confirmPassword) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
+  /// 🔹 RESET PASSWORD
+  Future<bool> resetPassword(
+    String newPassword,
+    String confirmPassword,
+  ) async {
     try {
+      _isLoading = true;
+      _errorMessage = null;
+      notifyListeners();
+
       if (newPassword != confirmPassword) {
         throw Exception('Passwords do not match');
       }
 
-      // TODO: Call backend API
-      await Future.delayed(const Duration(seconds: 1));
+      // Get pending email and OTP from storage
+      final email = await StorageHelper.getPendingEmail();
+      final otp = await StorageHelper.getPendingOtp();
 
-      _isLoading = false;
-      notifyListeners();
+      if (email == null || email.isEmpty || otp == null || otp.isEmpty) {
+        throw Exception('Missing email or OTP. Please restart the process.');
+      }
+
+      // Call backend to reset password
+      await AuthService.resetPassword(email, otp, newPassword);
+
+      // Clear login attempts and blocks for the associated phone number
+      if (_blockedPhone != null) {
+        _loginAttempts.remove(_blockedPhone);
+        _blockExpiry.remove(_blockedPhone);
+        _blockedPhone = null;
+      }
+
+      // Clear pending data
+      await StorageHelper.savePendingEmail('');
+      await StorageHelper.savePendingOtp('');
+
       return true;
     } catch (e) {
-      _errorMessage = 'Failed to reset password: $e';
-      _isLoading = false;
-      notifyListeners();
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
       return false;
-    }
-  }
-
-  // Logout
-  Future<void> logout() async {
-    _isLoading = true;
-    notifyListeners();
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.clear();
-
-      _currentUser = null;
-      _isAuthenticated = false;
-    } catch (e) {
-      _errorMessage = 'Logout failed: $e';
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  // Update user profile
-  Future<bool> updateProfile(User updatedUser) async {
-    _isLoading = true;
-    _errorMessage = null;
+  /// 🔹 CLEAR LOGIN ATTEMPTS (for testing or admin)
+  void clearLoginAttempts(String phone) {
+    _loginAttempts.remove(phone);
+    _blockExpiry.remove(phone);
+    if (_blockedPhone == phone) {
+      _blockedPhone = null;
+    }
     notifyListeners();
+  }
 
+  /// 🔹 LOGOUT
+  Future<void> logout() async {
     try {
-      // TODO: Call backend API
+      _isLoading = true;
+      notifyListeners();
+
+      await AuthService.logout();
+
+      _currentUser = null;
+      _isAuthenticated = false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// 🔹 FETCH PROFILE FROM BACKEND
+  Future<bool> fetchProfile() async {
+    try {
+      _isLoading = true;
+      _errorMessage = null;
+      notifyListeners();
+
+      final userData = await AuthService.getProfile();
+      _currentUser = User.fromJson(userData);
+
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+
+      // If unauthorized, clear session
+      if (_errorMessage?.contains('401') == true ||
+          _errorMessage?.contains('403') == true ||
+          _errorMessage?.contains('token') == true) {
+        await logout();
+      }
+
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// 🔹 UPDATE PROFILE
+  Future<bool> updateProfile(User updatedUser) async {
+    try {
+      _isLoading = true;
+      _errorMessage = null;
+      notifyListeners();
+
       await Future.delayed(const Duration(seconds: 1));
 
       final prefs = await SharedPreferences.getInstance();
@@ -237,40 +398,29 @@ class AuthProvider extends ChangeNotifier {
       await prefs.setString('user_email', updatedUser.email);
 
       _currentUser = updatedUser;
-      _isLoading = false;
-      notifyListeners();
       return true;
     } catch (e) {
-      _errorMessage = 'Failed to update profile: $e';
+      _errorMessage = 'Failed to update profile';
+      return false;
+    } finally {
       _isLoading = false;
       notifyListeners();
-      return false;
     }
   }
 
-  // Update profile image
+  /// 🔹 UPDATE PROFILE IMAGE
   Future<bool> updateProfileImage(String imagePath) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('user_profile_image', imagePath);
 
       if (_currentUser != null) {
-        _currentUser = User(
-          id: _currentUser!.id,
-          name: _currentUser!.name,
-          email: _currentUser!.email,
-          phone: _currentUser!.phone,
-          profileImage: imagePath,
-          dateOfBirth: _currentUser!.dateOfBirth,
-          gender: _currentUser!.gender,
-          bloodGroup: _currentUser!.bloodGroup,
-          address: _currentUser!.address,
-        );
+        _currentUser = _currentUser!.copyWith(profileImage: imagePath);
         notifyListeners();
       }
       return true;
     } catch (e) {
-      _errorMessage = 'Failed to update profile image: $e';
+      _errorMessage = 'Failed to update profile image';
       return false;
     }
   }
