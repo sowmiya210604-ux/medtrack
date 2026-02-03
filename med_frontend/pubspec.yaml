@@ -1,0 +1,63 @@
+name: medtrack
+description: A comprehensive mobile healthcare application for tracking medical reports and test results
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # State Management
+  provider: ^6.1.1
+  
+  # Navigation
+  go_router: ^13.0.0
+  
+  # UI & Icons
+  cupertino_icons: ^1.0.6
+  google_fonts: ^6.1.0
+  flutter_svg: ^2.0.9
+  
+  # Image & Camera
+  image_picker: ^1.0.7
+  image: ^4.1.7
+  
+  # Share & File
+  share_plus: ^7.2.1
+  path_provider: ^2.1.2
+  
+  # ML Kit for OCR
+  google_mlkit_text_recognition: ^0.11.0
+  google_mlkit_image_labeling: ^0.10.0
+  
+  # Charts
+  fl_chart: ^0.66.0
+  
+  # HTTP & API
+  http: ^1.2.0
+
+  
+  
+  # Storage
+  shared_preferences: ^2.2.2
+  
+  # Date & Time
+  intl: ^0.19.0
+  
+  # Animations
+  animations: ^2.0.11
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/images/
+    - assets/icons/
