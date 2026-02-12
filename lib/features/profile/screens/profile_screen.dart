@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
-import 'dart:io';
+import 'dart:io' if (dart.library.html) '../../../core/utils/file_stub.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../auth/providers/auth_provider.dart';
 import 'edit_profile_screen.dart';
@@ -237,241 +237,244 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
         body: SafeArea(
-        child: Consumer<AuthProvider>(
-          builder: (context, authProvider, _) {
-            final user = authProvider.currentUser;
+          child: Consumer<AuthProvider>(
+            builder: (context, authProvider, _) {
+              final user = authProvider.currentUser;
 
-            // Show loading indicator while fetching profile
-            if (_isLoadingProfile || authProvider.isLoading) {
-              return const Center(
-                child: CircularProgressIndicator(),
-              );
-            }
+              // Show loading indicator while fetching profile
+              if (_isLoadingProfile || authProvider.isLoading) {
+                return const Center(
+                  child: CircularProgressIndicator(),
+                );
+              }
 
-            // Show error state if no user data
-            if (user == null) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.person_off,
-                      size: 64,
-                      color: Colors.grey,
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'No user data available',
-                      style: TextStyle(
-                        fontSize: 18,
+              // Show error state if no user data
+              if (user == null) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.person_off,
+                        size: 64,
                         color: Colors.grey,
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton.icon(
-                      onPressed: _fetchProfileData,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Retry'),
-                    ),
-                  ],
-                ),
-              );
-            }
-
-            return RefreshIndicator(
-              onRefresh: _fetchProfileData,
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                child: Column(
-                  children: [
-                    // Profile Header
-                    _buildProfileHeader(context, user.name, user.email),
-
-                    const SizedBox(height: 24),
-
-                    // Personal Information
-                    _buildSection(
-                      context,
-                      'Personal Information',
-                      [
-                        _buildInfoTile(
-                          context,
-                          'Full Name',
-                          user.name,
-                          Icons.person,
-                        ),
-                        _buildInfoTile(
-                          context,
-                          'Email',
-                          user.email,
-                          Icons.email,
-                        ),
-                        _buildInfoTile(
-                          context,
-                          'Phone',
-                          user.phone,
-                          Icons.phone,
-                        ),
-                        if (user.dateOfBirth != null)
-                          _buildInfoTile(
-                            context,
-                            'Date of Birth',
-                            '${user.dateOfBirth!.day}/${user.dateOfBirth!.month}/${user.dateOfBirth!.year}',
-                            Icons.cake,
-                          ),
-                        if (user.gender != null)
-                          _buildInfoTile(
-                            context,
-                            'Gender',
-                            user.gender!,
-                            Icons.wc,
-                          ),
-                        if (user.bloodGroup != null)
-                          _buildInfoTile(
-                            context,
-                            'Blood Group',
-                            user.bloodGroup!,
-                            Icons.bloodtype,
-                          ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // Settings
-                    _buildSection(
-                      context,
-                      'Settings',
-                      [
-                        _buildActionTile(
-                          context,
-                          'Edit Profile',
-                          Icons.edit,
-                          () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const EditProfileScreen(),
-                              ),
-                            );
-                          },
-                        ),
-                        _buildActionTile(
-                          context,
-                          'Notifications',
-                          Icons.notifications,
-                          () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    const NotificationSettingsScreen(),
-                              ),
-                            );
-                          },
-                        ),
-                        _buildActionTile(
-                          context,
-                          'Privacy & Security',
-                          Icons.security,
-                          () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    const PrivacySecurityScreen(),
-                              ),
-                            );
-                          },
-                        ),
-                        _buildActionTile(
-                          context,
-                          'Help & Support',
-                          Icons.help,
-                          () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const HelpSupportScreen(),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // About
-                    _buildSection(
-                      context,
-                      'About',
-                      [
-                        _buildActionTile(
-                          context,
-                          'Terms of Service',
-                          Icons.description,
-                          () {
-                            // TODO: Show terms
-                          },
-                        ),
-                        _buildActionTile(
-                          context,
-                          'Privacy Policy',
-                          Icons.policy,
-                          () {
-                            // TODO: Show privacy policy
-                          },
-                        ),
-                        _buildInfoTile(
-                          context,
-                          'App Version',
-                          '1.0.0',
-                          Icons.info,
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // Logout Button
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: OutlinedButton.icon(
-                        onPressed: () async {
-                          final confirm =
-                              await _showLogoutConfirmation(context);
-                          if (confirm && context.mounted) {
-                            await authProvider.logout();
-                            if (context.mounted) {
-                              Navigator.of(context).pushNamedAndRemoveUntil(
-                                '/login',
-                                (route) => false,
-                              );
-                            }
-                          }
-                        },
-                        icon: const Icon(Icons.logout, color: AppColors.error),
-                        label: const Text(
-                          'Logout',
-                          style: TextStyle(color: AppColors.error),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: AppColors.error),
-                          minimumSize: const Size(double.infinity, 50),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'No user data available',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.grey,
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: _fetchProfileData,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                );
+              }
 
-                    const SizedBox(height: 24),
-                  ],
+              return RefreshIndicator(
+                onRefresh: _fetchProfileData,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: Column(
+                    children: [
+                      // Profile Header
+                      _buildProfileHeader(context, user.name, user.email),
+
+                      const SizedBox(height: 24),
+
+                      // Personal Information
+                      _buildSection(
+                        context,
+                        'Personal Information',
+                        [
+                          _buildInfoTile(
+                            context,
+                            'Full Name',
+                            user.name,
+                            Icons.person,
+                          ),
+                          _buildInfoTile(
+                            context,
+                            'Email',
+                            user.email,
+                            Icons.email,
+                          ),
+                          _buildInfoTile(
+                            context,
+                            'Phone',
+                            user.phone,
+                            Icons.phone,
+                          ),
+                          if (user.dateOfBirth != null)
+                            _buildInfoTile(
+                              context,
+                              'Date of Birth',
+                              '${user.dateOfBirth!.day}/${user.dateOfBirth!.month}/${user.dateOfBirth!.year}',
+                              Icons.cake,
+                            ),
+                          if (user.gender != null)
+                            _buildInfoTile(
+                              context,
+                              'Gender',
+                              user.gender!,
+                              Icons.wc,
+                            ),
+                          if (user.bloodGroup != null)
+                            _buildInfoTile(
+                              context,
+                              'Blood Group',
+                              user.bloodGroup!,
+                              Icons.bloodtype,
+                            ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // Settings
+                      _buildSection(
+                        context,
+                        'Settings',
+                        [
+                          _buildActionTile(
+                            context,
+                            'Edit Profile',
+                            Icons.edit,
+                            () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const EditProfileScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                          _buildActionTile(
+                            context,
+                            'Notifications',
+                            Icons.notifications,
+                            () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const NotificationSettingsScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                          _buildActionTile(
+                            context,
+                            'Privacy & Security',
+                            Icons.security,
+                            () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const PrivacySecurityScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                          _buildActionTile(
+                            context,
+                            'Help & Support',
+                            Icons.help,
+                            () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const HelpSupportScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // About
+                      _buildSection(
+                        context,
+                        'About',
+                        [
+                          _buildActionTile(
+                            context,
+                            'Terms of Service',
+                            Icons.description,
+                            () {
+                              // TODO: Show terms
+                            },
+                          ),
+                          _buildActionTile(
+                            context,
+                            'Privacy Policy',
+                            Icons.policy,
+                            () {
+                              // TODO: Show privacy policy
+                            },
+                          ),
+                          _buildInfoTile(
+                            context,
+                            'App Version',
+                            '1.0.0',
+                            Icons.info,
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Logout Button
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final confirm =
+                                await _showLogoutConfirmation(context);
+                            if (confirm && context.mounted) {
+                              await authProvider.logout();
+                              if (context.mounted) {
+                                Navigator.of(context).pushNamedAndRemoveUntil(
+                                  '/login',
+                                  (route) => false,
+                                );
+                              }
+                            }
+                          },
+                          icon:
+                              const Icon(Icons.logout, color: AppColors.error),
+                          label: const Text(
+                            'Logout',
+                            style: TextStyle(color: AppColors.error),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: AppColors.error),
+                            minimumSize: const Size(double.infinity, 50),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+                    ],
+                  ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
-    ),
     );
   }
 
@@ -521,10 +524,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           imageProvider = NetworkImage(profileImage);
                           hasImage = true;
                         } else {
-                          // On mobile, use FileImage
-                          final file = File(profileImage);
-                          if (file.existsSync()) {
-                            imageProvider = FileImage(file);
+                          try {
+                            // On mobile, use FileImage - wrap in try-catch for web compatibility
+                            final file = File(profileImage);
+                            if (file.existsSync()) {
+                              imageProvider = FileImage(file as dynamic);
+                              hasImage = true;
+                            }
+                          } catch (e) {
+                            // Fallback to network image if File operations fail
+                            imageProvider = NetworkImage(profileImage);
                             hasImage = true;
                           }
                         }

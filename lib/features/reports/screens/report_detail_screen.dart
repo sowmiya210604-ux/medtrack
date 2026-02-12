@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:share_plus/share_plus.dart';
-import 'dart:io';
+import 'dart:io' if (dart.library.html) '../../../core/utils/file_stub.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/services.dart';
 import '../../../core/theme/app_colors.dart';
@@ -180,7 +180,7 @@ Test Results:
 
       // Write file
       final file = File(filePath);
-      await file.writeAsString(reportText);
+      await file.writeAsString(reportText) as dynamic;
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

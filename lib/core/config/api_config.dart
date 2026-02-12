@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:io' if (dart.library.html) '../utils/file_stub.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
@@ -16,20 +16,28 @@ class ApiConfig {
     // Check for platform-specific overrides first
     if (kIsWeb && dotenv.env.containsKey('API_BASE_URL_WEB')) {
       return dotenv.env['API_BASE_URL_WEB']!;
-    } else if (Platform.isAndroid &&
-        dotenv.env.containsKey('API_BASE_URL_ANDROID')) {
-      return dotenv.env['API_BASE_URL_ANDROID']!;
-    } else if (Platform.isIOS && dotenv.env.containsKey('API_BASE_URL_IOS')) {
-      return dotenv.env['API_BASE_URL_IOS']!;
-    } else if (Platform.isWindows &&
-        dotenv.env.containsKey('API_BASE_URL_WINDOWS')) {
-      return dotenv.env['API_BASE_URL_WINDOWS']!;
-    } else if (Platform.isMacOS &&
-        dotenv.env.containsKey('API_BASE_URL_MACOS')) {
-      return dotenv.env['API_BASE_URL_MACOS']!;
-    } else if (Platform.isLinux &&
-        dotenv.env.containsKey('API_BASE_URL_LINUX')) {
-      return dotenv.env['API_BASE_URL_LINUX']!;
+    } else if (!kIsWeb) {
+      // Only check Platform on non-web platforms
+      try {
+        if (Platform.isAndroid &&
+            dotenv.env.containsKey('API_BASE_URL_ANDROID')) {
+          return dotenv.env['API_BASE_URL_ANDROID']!;
+        } else if (Platform.isIOS &&
+            dotenv.env.containsKey('API_BASE_URL_IOS')) {
+          return dotenv.env['API_BASE_URL_IOS']!;
+        } else if (Platform.isWindows &&
+            dotenv.env.containsKey('API_BASE_URL_WINDOWS')) {
+          return dotenv.env['API_BASE_URL_WINDOWS']!;
+        } else if (Platform.isMacOS &&
+            dotenv.env.containsKey('API_BASE_URL_MACOS')) {
+          return dotenv.env['API_BASE_URL_MACOS']!;
+        } else if (Platform.isLinux &&
+            dotenv.env.containsKey('API_BASE_URL_LINUX')) {
+          return dotenv.env['API_BASE_URL_LINUX']!;
+        }
+      } catch (e) {
+        // Platform not available, use default
+      }
     }
 
     // Use default base URL from .env

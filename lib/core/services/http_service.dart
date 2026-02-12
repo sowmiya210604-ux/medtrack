@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import '../utils/storage_helper.dart';
@@ -19,13 +18,18 @@ class HttpService {
           .timeout(ApiConfig.receiveTimeout);
 
       return _handle(response);
-    } on SocketException catch (e) {
-      ApiConfig.log('ERROR: Network error - $e');
-      throw ApiException(0, 'Cannot connect to backend. Is it running?');
-    } on http.ClientException catch (e) {
-      ApiConfig.log('ERROR: Client error - $e');
-      throw ApiException(0, 'Failed to connect to server at $url');
     } catch (e) {
+      // Handle network errors generically to work on all platforms
+      if (e.toString().contains('SocketException') ||
+          e.toString().contains('XMLHttpRequest') ||
+          e.toString().contains('Failed host lookup')) {
+        ApiConfig.log('ERROR: Network error - $e');
+        throw ApiException(0, 'Cannot connect to backend. Is it running?');
+      }
+      if (e is http.ClientException) {
+        ApiConfig.log('ERROR: Client error - $e');
+        throw ApiException(0, 'Failed to connect to server at $url');
+      }
       ApiConfig.log('ERROR: $e');
       throw ApiException(0, e.toString());
     }
@@ -48,13 +52,18 @@ class HttpService {
           .timeout(ApiConfig.receiveTimeout);
 
       return _handle(response);
-    } on SocketException catch (e) {
-      ApiConfig.log('ERROR: Network error - $e');
-      throw ApiException(0, 'Cannot connect to backend. Is it running?');
-    } on http.ClientException catch (e) {
-      ApiConfig.log('ERROR: Client error - $e');
-      throw ApiException(0, 'Failed to connect to server at $url');
     } catch (e) {
+      // Handle network errors generically to work on all platforms
+      if (e.toString().contains('SocketException') ||
+          e.toString().contains('XMLHttpRequest') ||
+          e.toString().contains('Failed host lookup')) {
+        ApiConfig.log('ERROR: Network error - $e');
+        throw ApiException(0, 'Cannot connect to backend. Is it running?');
+      }
+      if (e is http.ClientException) {
+        ApiConfig.log('ERROR: Client error - $e');
+        throw ApiException(0, 'Failed to connect to server at $url');
+      }
       ApiConfig.log('ERROR: $e');
       throw ApiException(0, e.toString());
     }

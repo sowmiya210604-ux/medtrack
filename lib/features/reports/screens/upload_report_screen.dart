@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:io' if (dart.library.html) '../../../core/utils/file_stub.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -169,7 +169,7 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
   Future<void> _validateImageClarity(File imageFile) async {
     try {
       // Using ML Kit Image Labeling to check if image is clear
-      final inputImage = InputImage.fromFile(imageFile);
+      final inputImage = InputImage.fromFile(imageFile as dynamic);
       final imageLabeler = ImageLabeler(
         options: ImageLabelerOptions(confidenceThreshold: 0.5),
       );
@@ -201,7 +201,7 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
     try {
       if (_textRecognizer == null) return;
 
-      final inputImage = InputImage.fromFile(imageFile);
+      final inputImage = InputImage.fromFile(imageFile as dynamic);
       final RecognizedText recognizedText =
           await _textRecognizer!.processImage(inputImage);
 
@@ -831,7 +831,7 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
                   fit: BoxFit.cover,
                 )
               : Image.file(
-                  File(_selectedImage!.path),
+                  File(_selectedImage!.path) as dynamic,
                   height: 200,
                   width: double.infinity,
                   fit: BoxFit.cover,
